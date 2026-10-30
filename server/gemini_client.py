@@ -3,12 +3,17 @@
 import json
 import os
 import sys
+from pathlib import Path
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
 from .content import rank_comparisons
+
+# docent/.env를 읽는다. 이미 설정된 환경 변수는 덮어쓰지 않는다.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 SYSTEM_INSTRUCTION = """You are a friendly museum docent at the Joseon painting gallery of the National Museum of Korea.
 You talk with one foreign visitor in English, through earphones. Your answers are spoken aloud.
@@ -38,7 +43,10 @@ class DocentReply(BaseModel):
 
 
 def make_client():
-    return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise SystemExit("GEMINI_API_KEY가 없습니다. docent/.env에 키를 넣으세요 (.env.example 참고).")
+    return genai.Client(api_key=api_key)
 
 
 def build_context(session, artworks, comparisons):

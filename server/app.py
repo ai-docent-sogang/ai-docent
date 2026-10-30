@@ -60,9 +60,13 @@ async def turn(
     if not audio_bytes and not text.strip():
         raise HTTPException(400, "audio or text required")
 
+    model = os.environ.get("GEMINI_MODEL")
+    if not model:
+        raise HTTPException(500, "GEMINI_MODEL is not set in docent/.env")
+
     started = time.perf_counter()
     reply = ask_docent(
-        gemini(), os.environ["GEMINI_MODEL"], s, artworks, comparisons,
+        gemini(), model, s, artworks, comparisons,
         audio_wav=audio_bytes, image_jpeg=image_bytes, text=text.strip() or None,
     )
     latency_ms = round((time.perf_counter() - started) * 1000)

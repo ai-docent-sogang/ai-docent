@@ -19,16 +19,16 @@ uv sync
 cp .env.example .env
 ```
 
-`.env`에 `GEMINI_API_KEY`를 넣은 뒤, 계정에서 쓸 수 있는 모델 ID를 확인해 `GEMINI_MODEL`에 적습니다. 오디오·이미지 입력을 지원하는 Flash 계열을 권장합니다.
+`.env`에 `GEMINI_API_KEY`를 넣은 뒤(서버가 `docent/.env`를 자동으로 읽습니다), 계정에서 쓸 수 있는 모델 ID를 확인해 `GEMINI_MODEL`에 적습니다. 오디오·이미지 입력을 지원하는 Flash 계열을 권장합니다.
 
 ```bash
-uv run --env-file .env python -m server.gemini_client --list-models
+uv run python -m server.gemini_client --list-models
 ```
 
 ## 실행
 
 ```bash
-uv run --env-file .env uvicorn server.app:app --host 0.0.0.0 --port 8000
+uv run uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
 
 아이폰 Safari는 HTTPS 주소에서만 카메라와 마이크를 허용합니다. 다음 두 방법 중 하나를 사용합니다.
@@ -46,7 +46,7 @@ mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout cer
 ```
 
 ```bash
-uv run --env-file .env uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem
+uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem
 ```
 
 ## 시연 순서
