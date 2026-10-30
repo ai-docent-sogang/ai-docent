@@ -1,0 +1,17 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #111; color: #f2f2f2; font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+#camera { width: 100%; height: 42vh; object-fit: cover; background: #000; display: block; }
+#panel { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; height: 58vh; }
+#status { color: #bbb; font-size: 14px; }
+#log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.msg { padding: 8px 10px; border-radius: 10px; max-width: 90%; }
+.visitor { align-self: flex-end; background: #2d4f7c; }
+.docent { align-self: flex-start; background: #333; }
+#text-form { display: flex; gap: 8px; }
+#text-input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #555; background: #222; color: inherit; font-size: 16px; }
+#controls { display: flex; gap: 10px; }
+button { padding: 12px; border: 0; border-radius: 10px; font-size: 16px; background: #555; color: #fff; }
+#talk { flex: 1; background: #c0392b; font-weight: 600; -webkit-user-select: none; user-select: none; touch-action: none; }
+#talk.recording { background: #e67e22; }
+#talk:disabled, #start:disabled { opacity: .4; }
+#meta { font-size: 12px; color: #888; }

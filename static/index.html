@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AI Docent v0</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <video id="camera" playsinline muted autoplay></video>
+  <div id="panel">
+    <div id="status">Tap Start, then allow camera and microphone.</div>
+    <div id="log"></div>
+    <form id="text-form">
+      <input id="text-input" placeholder="Or type a question" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+    <div id="controls">
+      <button id="start">Start</button>
+      <button id="talk" disabled>Hold to talk</button>
+    </div>
+    <div id="meta"></div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

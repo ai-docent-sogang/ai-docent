@@ -1,0 +1,11 @@
+[project]
+name = "ai-docent"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "google-genai>=2.30",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.30",
+]
