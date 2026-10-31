@@ -63,12 +63,12 @@ uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key
 
 시연 작품은 `data/artworks.csv`, 비교 작품은 `data/comparisons.csv`에 있습니다.
 
-| ID | 작품 (국립중앙박물관 소장품번호) | 비교 후보 (미검증) |
+| ID | 작품 (국립중앙박물관 소장품번호) | 비교 작품 (✓ = 검증) |
 | --- | --- | --- |
-| `JS_INWANG` | 정선, 인왕제색도 (건희 1) | 세잔 생트빅투아르 산 / 호쿠사이 후가쿠 36경 |
-| `KHD_SSIREUM` | 김홍도, 씨름 《단원 풍속도첩》 (본관 6504-22) | 브뤼헐 / 호쿠사이 망가 |
-| `KHD_SEODANG` | 김홍도, 서당 《단원 풍속도첩》 (본관 6504-23) | 없음 |
-| `KSH_SELF` | 강세황 초상 자필본 (구 10562) | 뒤러 자화상(1500) / 렘브란트 말년 자화상 |
+| `JS_INWANG` | 정선, 인왕제색도 (건희 1) | 세잔 「생트빅투아르 산」(Met) ✓ / 호쿠사이 「개풍쾌청(적부)」(Met) ✓ |
+| `KHD_SSIREUM` | 김홍도, 씨름 《단원 풍속도첩》 (본관 6504-22) | 브뤼헐 「농민의 결혼식」(KHM) ✓ / 호쿠사이 망가(Met, 문장 미검증) |
+| `KHD_SEODANG` | 김홍도, 서당 《단원 풍속도첩》 (본관 6504-23) | 브뤼헐 「아이들의 놀이」(KHM) ✓ |
+| `KSH_SELF` | 강세황 초상 자필본 (구 10562) | 렘브란트 「63세의 자화상」(내셔널갤러리) ✓ / 뒤러 자화상(1500, 미검증) |
 | `KJH_SEHAN` | 김정희, 세한도 (증 10000) | 없음 |
 | `LIM_GANGSAN` | 이인문, 강산무진도 (덕수 927) | 없음 |
 | `KHD_CHUSEONG` | 김홍도, 추성부도 (건희 16) | 없음 |
@@ -79,6 +79,6 @@ uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key
 
 `artworks.csv`의 `key_facts`는 2026-10-31에 e뮤지엄 작품 페이지(`official_url`)의 기본정보와 해설에서만 옮겼습니다(`verification_status=page_verified`). 이전 초안 가운데 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고, 서버는 이 열을 읽지 않습니다. 조선 회화실 실제 전시 여부(`on_view_status`)는 아직 확인하지 않았습니다. 시연 전에 현장과 박물관 공식 사이트에서 확인하고, 전시되지 않은 작품은 빼세요.
 
-`comparisons.csv`의 비교쌍은 모두 `unverified` 초안입니다. 해외 작품의 공식 페이지와 비교 문장을 확인한 뒤 시연하세요. 도슨트는 CSV에 있는 내용만 말하도록 지시되어 있으므로, CSV의 오류는 그대로 음성으로 전달됩니다.
+`comparisons.csv`의 `verified` 비교쌍은 2026-10-31에 양쪽 작품의 공식 소장품 기록(e뮤지엄, Met Collection API, KHM, 내셔널갤러리)에 있는 내용만으로 유사점·차이점을 다시 썼습니다(`checked_at`). `unverified` 2건(호쿠사이 망가, 뒤러)은 근거를 확인하지 못했습니다. 서버는 아직 `verification_status`로 거르지 않으므로, 시연 전에 미검증 행을 빼거나 확인하세요. 도슨트는 CSV에 있는 내용만 말하도록 지시되어 있으므로, CSV의 오류는 그대로 음성으로 전달됩니다.
 
 `key_facts`, `similarities`, `differences`는 `|`로, `profile_tags`는 `;`로 구분합니다. 작품을 추가하면 서버를 다시 시작합니다.
