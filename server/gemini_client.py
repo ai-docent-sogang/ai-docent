@@ -115,6 +115,8 @@ def sanitize_reply(reply, artworks, comparisons):
 
 
 if __name__ == "__main__" and "--list-models" in sys.argv:
-    for m in make_client().models.list():
+    # 임시 클라이언트는 목록을 다 받기 전에 정리되어 연결이 닫힐 수 있어 변수에 붙잡아 둔다.
+    client = make_client()
+    for m in client.models.list():
         if "generateContent" in (m.supported_actions or []):
             print(m.name)
