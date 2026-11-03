@@ -18,12 +18,13 @@ import csv
 import hashlib
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from server.recognition import DEFAULT_MODEL, INDEX_PATH, Embedder
+from server.recognition import DEFAULT_MODEL, INDEX_PATH, Embedder, open_for_model
 
 DOCENT_DIR = Path(__file__).resolve().parent.parent
 MANIFEST = DOCENT_DIR / "data" / "reference" / "manifest.csv"
@@ -40,12 +41,12 @@ def file_sha256(path):
 
 def main():
     import numpy as np
-    from PIL import Image
 
     parser = argparse.ArgumentParser(description="Embed approved reference images into index.npz")
     parser.add_argument("--images", default=os.getenv("DOCENT_IMAGES_DIR", str(DOCENT_DIR / "data" / "incoming" / "images_clean")))
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--output", default=str(INDEX_PATH))
+    parser.add_argument("--batch", type=int, default=16, help="images per model call; lower it if memory runs out")
     args = parser.parse_args()
     images_dir = Path(args.images)
     if not MANIFEST.exists():
@@ -54,7 +55,20 @@ def main():
     with open(MANIFEST, encoding="utf-8-sig") as f:
         rows = [row for row in csv.DictReader(f) if row["rights_use"].startswith("approved")]
     embedder = Embedder(args.model)
+    print(f"model {embedder.model_id} on {embedder.device}; {len(rows)} approved images", flush=True)
     vectors, artwork_ids, image_files, skipped = [], [], [], []
+    batch_images, batch_rows = [], []
+    started = time.time()
+
+    def flush():
+        """모아 둔 이미지를 한 번에 벡터로 바꾼다."""
+        if batch_images:
+            vectors.extend(embedder.embed_batch(batch_images))
+            artwork_ids.extend(row["artwork_id"] for row in batch_rows)
+            image_files.extend(row["image_file"] for row in batch_rows)
+            batch_images.clear()
+            batch_rows.clear()
+
     for number, row in enumerate(rows, 1):
         path = images_dir / row["image_file"]
         if not path.exists():
@@ -63,14 +77,16 @@ def main():
             skipped.append((row["image_file"], "hash differs from manifest"))
         else:
             try:
-                with Image.open(path) as image:
-                    vectors.append(embedder.embed(image))
-                artwork_ids.append(row["artwork_id"])
-                image_files.append(row["image_file"])
-            except (OSError, ValueError) as error:
+                batch_images.append(open_for_model(path))
+                batch_rows.append(row)
+            except OSError as error:
                 skipped.append((row["image_file"], str(error)))
-        if number % 50 == 0:
-            print(f"{number}/{len(rows)} images", flush=True)
+        if len(batch_images) >= args.batch:
+            flush()
+        if number % 100 == 0:
+            left = (time.time() - started) / number * (len(rows) - number)
+            print(f"{number}/{len(rows)} images, about {left / 60:.1f} min left", flush=True)
+    flush()
     if not vectors:
         raise SystemExit(f"No image could be embedded; skipped: {skipped[:5]}")
 

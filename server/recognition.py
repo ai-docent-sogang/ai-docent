@@ -12,7 +12,7 @@
 
 필요한 설치: uv sync --extra recognition (torch, transformers 등. 처음 한 번 수백 MB를 내려받음)
 사진 한 장으로 시험해 보기 (docent/ 폴더에서):
-    uv run python -m server.recognition 찍은사진.jpg
+    uv run python -m server.recognition 찍은사진1.jpg 찍은사진2.jpg
 """
 
 import argparse
@@ -35,15 +35,21 @@ class Embedder:
         self.torch = torch
         self.model_id = model_id
         self.processor = AutoImageProcessor.from_pretrained(model_id, revision=revision)
-        self.model = AutoModel.from_pretrained(model_id, revision=revision).eval()
+        self.device = pick_device(torch)
+        self.model = AutoModel.from_pretrained(model_id, revision=revision).eval().to(self.device)
         # 같은 모델이라도 버전이 다르면 벡터가 달라진다. 기준 벡터를 만든 버전을 기록해 두고 검색 때 맞춘다.
         self.revision = revision or getattr(self.model.config, "_commit_hash", None) or ""
 
     def embed(self, image):
         """PIL 이미지 한 장 → 길이 1로 맞춘(정규화한) 벡터. 길이를 1로 맞추면 내적이 곧 코사인 유사도가 된다."""
+        return self.embed_batch([image])[0]
+
+    def embed_batch(self, images):
+        """여러 장을 한 번에 모델에 넣어 벡터 묶음(장 수 × 벡터 길이)을 만든다. 한 장씩보다 훨씬 빠르다."""
         import numpy as np
 
-        inputs = self.processor(images=image.convert("RGB"), return_tensors="pt")
+        inputs = self.processor(images=[image.convert("RGB") for image in images], return_tensors="pt")
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
         with self.torch.inference_mode():
             if hasattr(self.model, "get_image_features"):
                 # CLIP처럼 글과 그림을 함께 다루는 모델은 그림 쪽 벡터만 따로 꺼낸다.
@@ -51,17 +57,36 @@ class Embedder:
             else:
                 output = self.model(**inputs)
         if isinstance(output, self.torch.Tensor):
-            vector = output
+            vectors = output
         elif getattr(output, "pooler_output", None) is not None:
             # DINOv2의 pooler_output은 맨 앞 [CLS] 토큰(그림 전체를 요약한 값)을 정규화한 것이다.
-            vector = output.pooler_output
+            vectors = output.pooler_output
         else:
-            vector = output.last_hidden_state[:, 0]
-        vector = vector[0].float().cpu().numpy()
-        norm = np.linalg.norm(vector)
-        if not np.isfinite(vector).all() or norm == 0:
+            vectors = output.last_hidden_state[:, 0]
+        vectors = vectors.float().cpu().numpy()
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        if not np.isfinite(vectors).all() or (norms == 0).any():
             raise ValueError("the model returned an invalid vector")
-        return vector / norm
+        return vectors / norms
+
+
+def pick_device(torch):
+    """쓸 수 있으면 그래픽 처리 장치를 쓴다. 맥(Apple 칩)은 mps, NVIDIA는 cuda, 없으면 cpu."""
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def open_for_model(path, size=512):
+    """큰 JPEG를 원래 해상도로 다 풀지 않고 모델에 필요한 크기 근처로만 연다(모델은 어차피 224px 정도로 줄인다).
+    박물관 이미지는 수천 px라 이것만으로 읽는 시간이 크게 준다."""
+    from PIL import Image
+
+    image = Image.open(path)
+    image.draft("RGB", (size, size))  # JPEG일 때만 효과가 있고, 다른 형식은 그대로 연다
+    return image.convert("RGB")
 
 
 class ReferenceIndex:
@@ -106,8 +131,6 @@ class ReferenceIndex:
 
 
 if __name__ == "__main__":
-    from PIL import Image
-
     parser = argparse.ArgumentParser(description="Find the reference artworks most similar to a photo")
     parser.add_argument("photos", nargs="+")
     parser.add_argument("--k", type=int, default=3)
@@ -119,8 +142,8 @@ if __name__ == "__main__":
         import csv
         with open(manifest, encoding="utf-8-sig") as f:
             titles = {row["artwork_id"]: row["title"] for row in csv.DictReader(f)}
+    # 모델을 불러오는 데 시간이 걸리므로, 사진 여러 장을 한 번에 넘기면 두 번째부터는 빠르다.
     for photo in args.photos:
-        with Image.open(photo) as image:
-            print(photo)
-            for rank, hit in enumerate(index.search(image, args.k), 1):
-                print(f"  {rank}. {hit['score']:.3f}  {hit['artwork_id']}  {titles.get(hit['artwork_id'], '')}")
+        print(photo)
+        for rank, hit in enumerate(index.search(open_for_model(photo), args.k), 1):
+            print(f"  {rank}. {hit['score']:.3f}  {hit['artwork_id']}  {titles.get(hit['artwork_id'], '')}")
