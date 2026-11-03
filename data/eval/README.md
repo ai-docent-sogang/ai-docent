@@ -12,3 +12,15 @@
 | `source_column` | 정답이 들어 있는 CSV와 열 (예: `artworks.csv:key_facts`) |
 
 BE1은 프롬프트를 바꿀 때마다 같은 질문 세트로 전후를 비교합니다. `answer_in_csv=no`인 질문에 사실을 지어내 답하면 실패입니다.
+
+# 인식 시험 사진 정답표 (BE2)
+
+시험 사진 파일은 `data/test_photos/`에 두고 **git에 올리지 않습니다**(관람객 얼굴, 작품 이용 조건). 정답표 `recognition_answers.csv`만 커밋합니다.
+
+| 열 | 내용 |
+| --- | --- |
+| `photo_file` | `data/test_photos/` 안의 파일 이름 |
+| `artwork_id` | 정답 작품의 e뮤지엄 ID(`PS…`, `data/reference/manifest.csv`의 `artwork_id`). 기준 DB에 없는 작품을 일부러 찍었으면 `none` |
+| `condition` | 촬영 조건. 예: `monitor-front`, `monitor-45deg`, `print-glare`, `site-glass`, `site-crowd` |
+| `taken_by` | 찍은 사람 |
+| `taken_at` | 찍은 날짜 |

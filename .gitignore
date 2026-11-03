@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 data/incoming/
 data/reference/index*.npz
+data/test_photos/
