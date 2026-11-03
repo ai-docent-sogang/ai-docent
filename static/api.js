@@ -1,0 +1,26 @@
+// 서버와 주고받는 부분만 모은 파일.
+//
+// 담당: FE1 (형식을 바꿀 때는 BE1과 합의)
+// 같이 보는 파일: docs/api.md (요청·응답 약속), server/app.py (서버 쪽 구현)
+//
+// 글라스 앱(FE2)도 같은 서버를 쓰므로, 이 파일이 보내는 형식이 글라스 앱이 따라야 할 형식이다.
+
+// 관람을 시작한다. 돌려받는 값: { session_id, reply(첫 인사) }
+export async function startSession() {
+  const res = await fetch("/api/session", { method: "POST" });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// 대화 한 번을 보낸다. audio(WAV)와 text 중 하나 이상, frame(JPEG)은 있으면 함께 보낸다.
+// 돌려받는 값: { transcript, reply, artwork_id, artwork_title, comparison_id, profile, latency_ms }
+export async function postTurn({ sessionId, audio, text, frame }) {
+  const form = new FormData(); // 파일(음성·사진)과 글을 한 번에 보내는 형식(multipart/form-data)
+  form.append("session_id", sessionId);
+  if (text) form.append("text", text);
+  if (audio) form.append("audio", audio, "speech.wav");
+  if (frame) form.append("image", frame, "frame.jpg");
+  const res = await fetch("/api/turn", { method: "POST", body: form });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
