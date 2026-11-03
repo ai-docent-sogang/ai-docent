@@ -4,3 +4,5 @@ certs/
 logs/
 __pycache__/
 *.pyc
+data/incoming/
+data/reference/index*.npz

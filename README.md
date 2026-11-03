@@ -18,7 +18,8 @@ docent/
 │   ├── gemini_client.py  Gemini 호출과 답의 모양 (BE1)
 │   ├── session.py        관람 세션 기억 (BE1)
 │   ├── content.py        콘텐츠 CSV 읽기와 비교 순서 (BE2)
-│   └── logs.py           응답 시간·인식 기록 (BE2, 구현 예정)
+│   ├── logs.py           응답 시간·인식 기록 (BE2, 구현 예정)
+│   └── recognition.py    사진으로 작품 후보 찾기 (BE2, 서버 연결 전)
 ├── static/      폰 웹앱 (FE1)
 │   ├── index.html, style.css  화면과 모양
 │   ├── app.js            화면 흐름
@@ -28,8 +29,11 @@ docent/
 ├── data/        콘텐츠 (FE3)
 │   ├── artworks.csv, comparisons.csv
 │   ├── scenarios/        대화 시나리오
-│   └── eval/             평가 질문 세트
-└── tools/       검사·측정 도구 (BE2, 구현 예정)
+│   ├── eval/             평가 질문 세트
+│   ├── reference/        기준 이미지 목록표와 벡터 (BE2, data/reference/README.md)
+│   ├── kb/               e뮤지엄 해설 DB
+│   └── incoming/         Drive에서 받은 원본 이미지·해설 (git 제외)
+└── tools/       검사·측정·DB 만들기 도구 (BE2)
 ```
 
 각 파일 맨 위 주석에 담당, 하는 일, 같이 보는 파일이 적혀 있습니다.

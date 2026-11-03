@@ -7,5 +7,15 @@ dependencies = [
     "google-genai>=2.30",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.9",
+    "requests>=2.31",
     "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+# 이미지로 작품 찾기(server/recognition.py, tools/build_index.py)에만 필요. 설치: uv sync --extra recognition
+recognition = [
+    "numpy>=1.26",
+    "pillow>=10.0",
+    "torch>=2.4",
+    "transformers>=4.45",
 ]
