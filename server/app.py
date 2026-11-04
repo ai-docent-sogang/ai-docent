@@ -81,7 +81,7 @@ async def turn(
 
     model = os.environ.get("GEMINI_MODEL")
     if not model:
-        raise HTTPException(500, "GEMINI_MODEL is not set in docent/.env")
+        raise HTTPException(500, "GEMINI_MODEL is not set in .env")
 
     # latency_ms는 서버 안에서 Gemini 호출에 걸린 시간만 잰다. 전체 체감 시간은 웹앱이 따로 잰다.
     started = time.perf_counter()

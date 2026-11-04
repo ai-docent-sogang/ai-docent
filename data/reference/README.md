@@ -9,7 +9,7 @@
 
 이미지 원본(약 1.2GB)은 GitHub에 올리지 않고 팀 Google Drive 폴더로 공유합니다. 각자 받아서 `data/incoming/`에 둡니다(`docent_kb.jsonl`, `images_clean/`). 다른 위치에 두면 `.env`에 `DOCENT_IMAGES_DIR=이미지폴더경로`를 적습니다.
 
-## 만드는 순서 (`docent/` 폴더에서)
+## 만드는 순서 (저장소 최상위 폴더에서)
 
 ```bash
 uv run python -m tools.build_manifest

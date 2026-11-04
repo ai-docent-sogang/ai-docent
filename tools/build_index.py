@@ -7,7 +7,7 @@
 - 파일의 해시가 manifest와 다르면 다른 파일로 보고 건너뛴다(팀원끼리 같은 이미지 세트를 쓰는지 확인).
 - index.npz는 git에 올리지 않는다. 같은 manifest와 같은 모델이면 누가 만들어도 같은 결과가 나온다.
 
-실행 (docent/ 폴더에서, 처음에는 모델을 내려받아 몇 분 더 걸림):
+실행 (저장소 최상위 폴더에서, 처음에는 모델을 내려받아 몇 분 더 걸림):
     uv sync --extra recognition
     uv run python -m tools.build_index
     uv run python -m tools.build_index --model openai/clip-vit-base-patch32 --output data/reference/index_clip.npz

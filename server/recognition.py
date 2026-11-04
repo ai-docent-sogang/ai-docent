@@ -11,7 +11,7 @@
 "이 점수 이상이면 확정"하는 기준은 회화실 시험 사진으로 정답률을 잰 뒤 정한다(역할 가이드 4장).
 
 필요한 설치: uv sync --extra recognition (torch, transformers 등. 처음 한 번 수백 MB를 내려받음)
-사진 한 장으로 시험해 보기 (docent/ 폴더에서):
+사진 한 장으로 시험해 보기 (저장소 최상위 폴더에서):
     uv run python -m server.recognition 찍은사진1.jpg 찍은사진2.jpg
 """
 

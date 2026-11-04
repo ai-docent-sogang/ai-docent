@@ -10,7 +10,7 @@
 ## 폴더 구조와 담당
 
 ```text
-docent/
+ai-docent/  (저장소 최상위)
 ├── docs/        개발계획서, 역할 가이드, API 약속(api.md), 시연 체크리스트
 ├── server/      Python 서버
 │   ├── app.py            API 주소와 요청 처리 (BE1)
@@ -40,7 +40,7 @@ docent/
 
 ## 준비
 
-`docent/` 폴더에서 실행합니다.
+저장소 최상위 폴더에서 실행합니다.
 
 ```bash
 uv sync
@@ -50,7 +50,7 @@ uv sync
 cp .env.example .env
 ```
 
-`.env`에 `GEMINI_API_KEY`를 넣은 뒤(서버가 `docent/.env`를 자동으로 읽습니다), 계정에서 쓸 수 있는 모델 ID를 확인해 `GEMINI_MODEL`에 적습니다. 오디오·이미지 입력을 지원하는 Flash 계열을 권장합니다.
+`.env`에 `GEMINI_API_KEY`를 넣은 뒤(서버가 이 폴더의 `.env`를 자동으로 읽습니다), 계정에서 쓸 수 있는 모델 ID를 확인해 `GEMINI_MODEL`에 적습니다. 오디오·이미지 입력을 지원하는 Flash 계열을 권장합니다.
 
 ```bash
 uv run python -m server.gemini_client --list-models

@@ -13,7 +13,7 @@
 이용 조건은 작품마다 e뮤지엄 페이지에서 읽는다. 4개씩 동시에 읽어 1,000점에 몇 분 걸린다.
 확인 결과는 data/incoming/page_checks.jsonl에 바로바로 저장되므로, 중간에 멈춰도 다시 실행하면 이어서 한다.
 
-실행 (docent/ 폴더에서):
+실행 (저장소 최상위 폴더에서):
     uv run python -m tools.build_manifest
 """
 

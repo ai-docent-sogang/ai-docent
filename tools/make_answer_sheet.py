@@ -11,7 +11,7 @@
     조건: 촬영 조건(예: web-gallery, web-angle, web-glare). 생략 가능
     예) 씨름__web-gallery__01.jpg, PS0100100100100650400022__web-angle__02.jpg, none__poster__01.jpg
 
-실행 (docent/ 폴더에서):
+실행 (저장소 최상위 폴더에서):
     uv run python -m tools.make_answer_sheet
 이미 표에 있는 사진은 건드리지 않고 새 사진만 추가한다. 작품을 하나로 정하지 못하면 artwork_id를 CHECK로 두고
 후보를 note에 적으므로, 그 줄만 직접 고치면 된다.

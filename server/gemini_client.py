@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from .content import rank_comparisons
 from .prompts import SYSTEM_INSTRUCTION
 
-# docent/.env를 읽는다. 이미 설정된 환경 변수는 덮어쓰지 않는다.
+# 저장소 최상위의 .env를 읽는다. 이미 설정된 환경 변수는 덮어쓰지 않는다.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # 답의 다양성. 0에 가까울수록 같은 질문에 같은 답을 하고, 높을수록 표현이 다양해지지만
@@ -57,7 +57,7 @@ def make_client():
     """.env의 GEMINI_API_KEY로 Gemini 연결 객체를 만든다. 키가 없으면 안내하고 멈춘다."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise SystemExit("GEMINI_API_KEY가 없습니다. docent/.env에 키를 넣으세요 (.env.example 참고).")
+        raise SystemExit("GEMINI_API_KEY가 없습니다. 저장소 최상위의 .env에 키를 넣으세요 (.env.example 참고).")
     return genai.Client(api_key=api_key)
 
 
