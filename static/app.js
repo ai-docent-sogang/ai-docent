@@ -25,6 +25,28 @@ const MIN_WAV_BYTES = 8000;
 // 서버로 보내는 사진의 최대 가로 크기. 크면 인식에는 유리하지만 전송과 응답이 느려진다.
 const FRAME_MAX_WIDTH = 768;
 
+let lastReply = "";
+
+function readReply(text) {
+  $("audio-status").textContent = "Preparing voice… If silent, tap Replay reply.";
+  speak(text, {
+    onStart: () => { $("audio-status").textContent = "Speaking…"; },
+    onEnd: () => { $("audio-status").textContent = "Voice finished."; },
+    onError: (code) => {
+      $("audio-status").textContent = `Voice error: ${code}. Tap Replay reply or Test voice. If still silent, check volume and audio output.`;
+    },
+  });
+}
+
+function rememberReply(text) {
+  lastReply = text;
+  $("replay").disabled = !text;
+  readReply(text);
+}
+
+$("test-voice").addEventListener("click", () => readReply("Hello. This is the AI docent voice test."));
+$("replay").addEventListener("click", () => { if (!busy && lastReply) readReply(lastReply); });
+
 function setStatus(text) { $("status").textContent = text; }
 
 // 대화 기록 창에 말풍선 하나를 추가한다. who: "visitor" 또는 "docent"
@@ -41,16 +63,16 @@ function addMessage(who, text) {
 $("start").addEventListener("click", async () => {
   $("start").disabled = true;
   try {
+    await initAudio();
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 } }, // 후면 카메라
       audio: { echoCancellation: true, noiseSuppression: true },
     });
     video.srcObject = stream;
-    initAudio(); // iOS: 탭 직후에 소리 기능을 열어 둬야 한다
     const data = await startSession();
     sessionId = data.session_id;
     addMessage("docent", data.reply);
-    speak(data.reply);
+    rememberReply(data.reply);
     talkBtn.disabled = false;
     setStatus("Point the camera at a painting and hold the red button to talk.");
   } catch (err) {
@@ -64,6 +86,9 @@ talkBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   if (busy || !stream) return;
   stopSpeaking();
+  $("audio-status").textContent = "Voice stopped for recording.";
+  $("replay").disabled = true;
+  $("test-voice").disabled = true;
   chunks = [];
   recorder = new MediaRecorder(new MediaStream(stream.getAudioTracks())); // 카메라는 빼고 마이크만 녹음
   recorder.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
@@ -84,6 +109,8 @@ talkBtn.addEventListener("pointerdown", (e) => {
 
 // ④ 녹음이 끝나면 사진을 찍고, 녹음을 WAV로 바꿔 보낸다.
 async function onRecordingStop() {
+  $("replay").disabled = !lastReply;
+  $("test-voice").disabled = false;
   const blob = new Blob(chunks, { type: recorder.mimeType });
   const frame = await captureFrame();
   let wav;
@@ -109,6 +136,9 @@ $("text-form").addEventListener("submit", async (e) => {
 // ⑤ 서버로 보내고, 답을 화면에 쓰고, 읽어 준다. 하단에 인식 결과와 응답 시간을 표시한다.
 async function sendTurn({ audio, text, frame }) {
   busy = true;
+  stopSpeaking();
+  $("replay").disabled = true;
+  $("test-voice").disabled = true;
   talkBtn.disabled = true;
   setStatus("Thinking…");
   const t0 = performance.now();
@@ -116,7 +146,7 @@ async function sendTurn({ audio, text, frame }) {
     const data = await postTurn({ sessionId, audio, text, frame });
     addMessage("visitor", data.transcript || text);
     addMessage("docent", data.reply);
-    speak(data.reply);
+    rememberReply(data.reply);
     const total = Math.round(performance.now() - t0); // 보내기 시작부터 답을 받기까지 전체 시간
     $("meta").textContent =
       `artwork: ${data.artwork_title || data.artwork_id} · comparison: ${data.comparison_id || "-"} · ` +
@@ -127,6 +157,8 @@ async function sendTurn({ audio, text, frame }) {
     setStatus(`Error: ${err.message}`);
   } finally {
     busy = false;
+    $("replay").disabled = !lastReply;
+    $("test-voice").disabled = false;
     talkBtn.disabled = false;
   }
 }

@@ -5,25 +5,49 @@
 
 let audioCtx = null;
 
-// 소리 처리 장치를 준비한다. iOS는 사용자가 화면을 탭한 직후에만 소리 기능을 열어 주므로,
-// 반드시 Start 버튼 클릭 안에서 불러야 한다.
+// Start의 첫 await 전에 호출한다. 빈 발화가 이후 재생을 허용한다고 가정하지 않는다.
 export function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  speak(""); // 빈 문장을 한 번 읽어 음성 출력 권한을 미리 열어 둔다(iOS).
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") return audioCtx.resume();
+  return Promise.resolve();
 }
 
-// 영어 문장을 브라우저 내장 음성으로 읽는다. 읽던 문장이 있으면 끊고 새로 읽는다.
-export function speak(text) {
-  speechSynthesis.cancel();
+let currentUtterance = null;
+
+export function speak(text, { onStart, onEnd, onError } = {}) {
+  stopSpeaking();
+  if (!text.trim()) return;
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    onError?.("unsupported");
+    return;
+  }
   const u = new SpeechSynthesisUtterance(text);
+  currentUtterance = u;
   u.lang = "en-US";
   const voice = speechSynthesis.getVoices().find((v) => v.lang === "en-US");
   if (voice) u.voice = voice;
-  speechSynthesis.speak(u);
+  u.onstart = () => { if (currentUtterance === u) onStart?.(); };
+  u.onend = () => {
+    if (currentUtterance !== u) return;
+    currentUtterance = null;
+    onEnd?.();
+  };
+  u.onerror = (event) => {
+    if (currentUtterance !== u) return;
+    currentUtterance = null;
+    onError?.(event.error);
+  };
+  try {
+    speechSynthesis.speak(u);
+  } catch (error) {
+    currentUtterance = null;
+    onError?.(error.message);
+  }
 }
 
 export function stopSpeaking() {
-  speechSynthesis.cancel();
+  currentUtterance = null;
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
 
 // 녹음 파일을 16kHz 모노 WAV로 바꾼다.
