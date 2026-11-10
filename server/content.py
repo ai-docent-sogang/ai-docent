@@ -26,7 +26,7 @@ def load_artworks(path=DATA_DIR / "artworks.csv"):
 
     서버는 key_facts만 Gemini에 보낸다. unverified_facts 열은 확인되지 않은 문장이라 읽지 않는다.
     """
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:  # Excel이 저장한 CSV의 BOM(\ufeff) 때문에 utf-8-sig로 읽는다
         rows = list(csv.DictReader(f))
     for row in rows:
         row["key_facts"] = split_cell(row["key_facts"], "|")
@@ -38,7 +38,7 @@ def load_comparisons(path=DATA_DIR / "comparisons.csv"):
 
     주의: 아직 verification_status로 거르지 않는다. 미검증 행도 Gemini에 전달된다.
     """
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:  # Excel이 저장한 CSV의 BOM(\ufeff) 때문에 utf-8-sig로 읽는다
         rows = list(csv.DictReader(f))
     for row in rows:
         row["profile_tags"] = split_cell(row["profile_tags"], ";")
