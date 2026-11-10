@@ -16,3 +16,12 @@ button { padding: 12px; border: 0; border-radius: 10px; font-size: 16px; backgro
 #talk.recording { background: #e67e22; }
 #talk:disabled, #start:disabled { opacity: .4; }
 #meta { font-size: 12px; color: #888; }
+
+/* 텍스트 전용 질문·답변(/api/ask) 시험 영역. FE2 디자인이 오면 교체된다. */
+#ask-box { border-top: 1px solid #333; padding-top: 8px; font-size: 14px; }
+#ask-box summary { color: #bbb; cursor: pointer; }
+#ask-artwork { width: 100%; margin: 8px 0; padding: 10px; border-radius: 8px; border: 1px solid #555; background: #222; color: inherit; font-size: 16px; }
+#ask-form { display: flex; gap: 8px; }
+#ask-input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #555; background: #222; color: inherit; font-size: 16px; }
+#ask-meta { margin-top: 6px; font-size: 12px; color: #888; }
+#ask-meta a { color: #8ab4f8; }

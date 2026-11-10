@@ -6,8 +6,14 @@
 // 녹음과 사진은 서버로 보내기만 하고 기기에 저장하지 않는다.
 // 아이폰 Safari는 https:// 주소에서만 카메라·마이크를 허용한다(README의 Cloudflare 터널 참고).
 
-import { postTurn, startSession } from "./api.js";
+import { postAsk, postTurn, startSession } from "./api.js";
+import { ARTWORKS, DEFAULT_ARTWORK_ID } from "./config.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
+
+// 이 파일은 흐름이 둘이다. 서로 건드리지 않는다.
+//   ① /api/turn  — 녹음 + 사진 + 세션 기억. 11/4 시연부터 쓰던 흐름.
+//   ② /api/ask   — 고른 작품 1점 + 질문 텍스트. 11/11 BE1이 추가(docs/api.md).
+// ②를 시험하는 동안에도 ①은 그대로 동작해야 한다.
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -173,3 +179,75 @@ function captureFrame() {
   canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.75)); // 0.75 = JPEG 화질
 }
+
+// ===== ② 텍스트 전용 질문·답변(/api/ask) =====
+// 작품을 직접 고르고 질문 텍스트만 보낸다. 세션·카메라·녹음을 쓰지 않으므로 Start 없이도 쓸 수 있다.
+// 브라우저 음성 인식(STT)은 아직 없다. 지금은 글로 입력하고, 답변만 음성으로 읽어 준다.
+
+// 작품 고르는 목록을 config.js의 ARTWORKS로 채운다.
+const askArtwork = $("ask-artwork");
+for (const art of ARTWORKS) {
+  const option = document.createElement("option");
+  option.value = art.id;
+  option.textContent = art.label;
+  askArtwork.appendChild(option);
+}
+askArtwork.value = DEFAULT_ARTWORK_ID;
+
+// status 값마다 화면 아래에 덧붙일 안내. 관람객에게는 answer를 읽어 주고, 개발용 정보는 ask-meta에 둔다.
+const ASK_STATUS_NOTE = {
+  ok: "",
+  mock: "임시 답변(ASK_MOCK=1). Gemini를 부르지 않았다.",
+  no_artwork: "서버에 이 작품 자료가 없다.",
+  error: "서버가 답변을 만들지 못했다. 서버 터미널의 [/api/ask] 줄을 확인한다.",
+};
+
+$("ask-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = $("ask-input").value.trim();
+  if (!question || busy) return;
+  const artworkId = askArtwork.value;
+
+  busy = true;
+  $("ask-send").disabled = true;
+  stopSpeaking();
+  $("replay").disabled = true;
+  $("test-voice").disabled = true;
+  $("ask-meta").textContent = "Asking…";
+  addMessage("visitor", question);
+  $("ask-input").value = "";
+
+  const t0 = performance.now();
+  try {
+    const data = await postAsk({ artworkId, question });
+    addMessage("docent", data.answer);
+    rememberReply(data.answer); // 화면에 쓰고 음성으로 읽어 준다(①과 같은 경로)
+    const total = Math.round(performance.now() - t0); // 보내기부터 받기까지 왕복 시간
+    const parts = [
+      `ask: ${data.artwork_title || data.artwork_id}`,
+      `status ${data.status}`,
+      `server ${data.latency_ms} ms · total ${total} ms`,
+    ];
+    if (data.model) parts.push(`model ${data.model}`);
+    $("ask-meta").textContent = parts.join(" · ");
+    const note = ASK_STATUS_NOTE[data.status];
+    if (note) $("ask-meta").textContent += ` — ${note}`;
+    if (data.source_url) {
+      // 출처는 관람객에게도 보여야 한다(AGENTS.md: 출처 있는 근거만 쓴다).
+      const link = document.createElement("a");
+      link.href = data.source_url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "source";
+      $("ask-meta").append(" · ", link);
+    }
+  } catch (err) {
+    // 400(빈 질문)이나 서버에 닿지 못한 경우. 이때는 읽어 줄 문장이 없다.
+    $("ask-meta").textContent = `Error: ${err.message}`;
+  } finally {
+    busy = false;
+    $("ask-send").disabled = false;
+    $("replay").disabled = !lastReply;
+    $("test-voice").disabled = false;
+  }
+});

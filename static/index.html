@@ -26,6 +26,18 @@
       <div id="audio-status" role="status" aria-live="polite"></div>
     </div>
     <div id="meta"></div>
+
+    <!-- 텍스트 전용 질문·답변(POST /api/ask) 시험 영역. 작품을 직접 고르고 질문만 보낸다.
+         FE2의 화면 디자인이 들어오면 이 자리는 그쪽으로 옮긴다(docs/역할_가이드.md의 ui.js 분담). -->
+    <details id="ask-box">
+      <summary>Ask about one painting (text API)</summary>
+      <select id="ask-artwork" aria-label="Painting"></select>
+      <form id="ask-form">
+        <input id="ask-input" placeholder="Ask about this painting" autocomplete="off">
+        <button type="submit" id="ask-send">Ask</button>
+      </form>
+      <div id="ask-meta"></div>
+    </details>
   </div>
   <script type="module" src="/static/app.js"></script>
 </body>
