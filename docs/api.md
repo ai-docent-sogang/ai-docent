@@ -52,6 +52,37 @@
 
 보내는 값: 없음. 받는 값: `{"ok": true}`. 그 세션의 기억을 서버에서 지웁니다. 지금 웹앱은 아직 이 주소를 부르지 않습니다.
 
+## POST `/api/ask` — 텍스트 질문·답변 (BE1, 11/11 추가)
+
+FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내는 주소입니다. 세션 없이 작품 한 점 기준으로 답합니다. 코드: `server/ask.py`.
+
+보내는 값: JSON (`Content-Type: application/json`)
+
+| 필드 | 필수 | 형식 | 설명 |
+| --- | --- | --- | --- |
+| `artwork_id` | 예 | 문자열 | `data/artworks.csv`의 작품 ID (예: `KHD_SSIREUM`) |
+| `question` | 예 | 문자열 | 관람객의 질문(영어) |
+
+예: `{"artwork_id": "KHD_SSIREUM", "question": "Who painted this?"}`
+
+받는 값:
+
+| 필드 | 형식 | 설명 |
+| --- | --- | --- |
+| `answer` | 문자열 | 화면에 표시하고 읽어 줄 답변. **status와 상관없이 항상 들어 있음** |
+| `artwork_id` | 문자열 | 보낸 작품 ID 그대로 |
+| `artwork_title` | 문자열 | 작품 영문 제목. 모르는 작품이면 `""` |
+| `status` | 문자열 | `ok` 정상 / `mock` 임시 답변 / `no_artwork` 자료 없는 작품 / `error` 답변 생성 실패 |
+| `source_url` | 문자열 | 근거 자료 출처(e뮤지엄 페이지). 없으면 `""` |
+| `latency_ms` | 숫자 | 서버 안에서 답변을 만드는 데 걸린 시간(밀리초) |
+| `model` | 문자열 | 실제로 답한 Gemini 모델. 임시 답변·실패면 `""` |
+
+모델 예비 순서: `GEMINI_MODEL`이 과부하(503)·사용 불가·12초 초과면 `ASK_FALLBACK_MODELS`(기본 `gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite`) 순서로 다음 모델을 씁니다.
+
+오류: 400 `question`이 비었음. 자료 없는 작품과 Gemini 실패는 오류 코드 대신 `status`와 안내 문장(`answer`)으로 돌려줍니다.
+
+임시 답변 모드: `.env`에 `ASK_MOCK=1`을 넣고 서버를 다시 켜면 Gemini 없이 `status: "mock"` 답변을 돌려줍니다.
+
 ## 바꿀 때 확인할 곳
 
 | 바꾸는 것 | 함께 고칠 파일 |
