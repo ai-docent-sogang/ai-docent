@@ -8,6 +8,7 @@
 
 import { postAsk, postTurn, startSession } from "./api.js";
 import { ARTWORKS, DEFAULT_ARTWORK_ID } from "./config.js";
+import { isSupported as sttSupported, listen, stopListening } from "./stt.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
 
 // 이 파일은 흐름이 둘이다. 서로 건드리지 않는다.
@@ -250,4 +251,64 @@ $("ask-form").addEventListener("submit", async (e) => {
     $("replay").disabled = !lastReply;
     $("test-voice").disabled = false;
   }
+});
+
+// ===== ③ 브라우저 음성 인식(STT)으로 질문 입력 =====
+// 말한 내용을 질문 입력창에 넣는다. 보내기는 기존 ask-form 흐름을 그대로 쓴다.
+// 브라우저가 지원하지 않으면 버튼을 끄고 글로 입력하게 안내한다(기능이 사라지지 않게).
+// 주의: 브라우저 STT는 소리를 브라우저 회사 서버로 보낸다(stt.js 머리말 참고).
+
+const listenBtn = $("ask-listen");
+const sttStatus = $("ask-stt-status");
+let listening = false;
+
+// 오류 코드별 안내. 관람객이 다음에 무엇을 할지 알 수 있게 쓴다.
+const STT_ERROR_NOTE = {
+  unsupported: "This browser cannot listen. Please type your question.",
+  "not-allowed": "Microphone blocked. Allow it in settings, or type your question.",
+  "service-not-allowed": "Microphone blocked. Allow it in settings, or type your question.",
+  "no-speech": "I did not catch that. Try again, or type your question.",
+  network: "Speech recognition needs a network connection. Please type your question.",
+  "audio-capture": "No microphone found. Please type your question.",
+};
+
+function setListening(on) {
+  listening = on;
+  listenBtn.classList.toggle("listening", on);
+  listenBtn.textContent = on ? "Listening… tap to stop" : "Speak question";
+}
+
+if (!sttSupported()) {
+  listenBtn.disabled = true;
+  sttStatus.textContent = "Voice input not available. Type your question.";
+}
+
+listenBtn.addEventListener("click", () => {
+  if (listening) { stopListening(); return; } // 한 번 더 누르면 멈춘다
+  if (busy) return;
+  stopSpeaking(); // 도슨트가 말하는 중이면 멈춘다(마이크가 자기 목소리를 듣지 않게)
+  $("ask-input").value = "";
+  $("ask-input").classList.remove("partial");
+  sttStatus.textContent = "Listening…";
+  setListening(true);
+  listen({
+    onPartial: (text) => {
+      // 말하는 중간 결과는 흐리게 보여 준다. 최종 결과가 오면 덮어쓴다.
+      $("ask-input").value = text;
+      $("ask-input").classList.add("partial");
+    },
+    onFinal: (text) => {
+      $("ask-input").value = text;
+      $("ask-input").classList.remove("partial");
+      sttStatus.textContent = "Check the question, then tap Ask.";
+    },
+    onError: (code) => {
+      $("ask-input").classList.remove("partial");
+      sttStatus.textContent = STT_ERROR_NOTE[code] || `Voice input error: ${code}. Please type your question.`;
+      // 규격대로라면 오류 뒤에 onEnd가 따라오지만, 그렇지 않은 브라우저에서 버튼이
+      // "듣는 중"으로 멈춰 있지 않게 여기서도 되돌린다. 두 번 불려도 문제 없다.
+      setListening(false);
+    },
+    onEnd: () => setListening(false),
+  });
 });
