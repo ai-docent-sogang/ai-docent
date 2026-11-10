@@ -8,6 +8,7 @@
     POST /api/session               관람 시작: 세션 ID와 첫 인사
     POST /api/turn                  대화 한 번: 음성·글 + 사진 → 도슨트 답
     POST /api/session/{id}/end      관람 끝: 세션 기억 삭제
+    POST /api/ask                   텍스트 질문·답변: 작품 ID + 질문 → 답변 (server/ask.py)
 요청·응답 형식을 바꾸면 static/api.js(FE1)가 고장 나므로 docs/api.md를 먼저 고치고 FE1과 합의한다.
 
 음성과 사진은 요청을 처리하는 동안만 메모리에 있고 파일로 저장하지 않는다.
@@ -22,6 +23,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import ask as ask_api
 from . import session as sessions
 from .content import load_artworks, load_comparisons
 from .gemini_client import ask_docent, make_client
@@ -44,6 +46,12 @@ def gemini():
     if _client is None:
         _client = make_client()
     return _client
+
+
+# 텍스트 전용 질문·답변 API(POST /api/ask). 작품 CSV와 Gemini 연결은 이 파일의 것을 함께 쓴다.
+ask_api.artworks = artworks
+ask_api.get_client = gemini
+app.include_router(ask_api.router)
 
 
 @app.get("/")
