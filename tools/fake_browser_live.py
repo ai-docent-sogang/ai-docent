@@ -13,13 +13,13 @@
     PYTHONPATH=. uv run python tools/fake_browser_live.py KHD_SSIREUM /tmp/q1.wav /tmp/q2.wav
 
 WAV를 여러 개 주면 한 연결에서 연달아 묻는다. 반드시 두 개 이상으로 확인한다. 한 번만 묻는
-시험은 통과하면서 두 번째 질문부터 막히는 결함이 실제로 있었다(11/12, live_relay_spike.py 주석).
+시험은 통과하면서 두 번째 질문부터 막히는 결함이 실제로 있었다(11/11, live_relay_spike.py 주석).
 """
 import json, sys, time, wave
 import websockets, asyncio
 
 ARTWORK = sys.argv[1]
-# WAV를 여러 개 주면 한 연결에서 연달아 묻는다. 한 번만 묻는 시험으로는 11/12에 겪은
+# WAV를 여러 개 주면 한 연결에서 연달아 묻는다. 한 번만 묻는 시험으로는 11/11에 겪은
 # "두 번째 질문부터 답이 오지 않는" 결함을 잡을 수 없었다. 그래서 여러 턴이 기본이다.
 WAVS = [a for a in sys.argv[2:] if not a.startswith("--") and a.endswith(".wav")]
 PORT = next((a.split("=")[1] for a in sys.argv if a.startswith("--port=")), "8013")
