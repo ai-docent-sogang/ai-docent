@@ -120,6 +120,19 @@ function openSocket() {
         return;
       }
       const data = JSON.parse(event.data);
+      if (data.type === "reconnecting") {
+        // Gemini 세션이 닫혀 다시 붙는 중이다(질문 사이 2분 이상 비었을 때 일어난다).
+        // 폰과 서버 사이 연결은 그대로이므로 페이지를 새로 열 필요는 없다.
+        setStatus("연결을 다시 맺는 중… 잠시 뒤 다시 말해 보세요.");
+        log("Gemini 세션 재연결 중", "");
+        return;
+      }
+      if (data.type === "reconnected") {
+        setStatus(`다시 연결됨 · ${data.model} · 이어서 물어보세요.`);
+        log("재연결 완료(대화 내용 유지)", "ok");
+        $("talk").disabled = false;
+        return;
+      }
       if (data.type === "ready") {
         setStatus(`연결됨 · ${data.model} · ${data.artwork_title}`);
         $("talk").disabled = false;
@@ -153,6 +166,9 @@ talkBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   player.stop(); // 답변이 나오는 중이면 멈춘다(마이크가 그 소리를 되받지 않게)
+  // 말의 시작을 서버에 알린다. Live의 자동 음성 감지를 끄고 우리가 경계를 알려 주는 방식이다
+  // (누르고 말하기에는 이 방식을 쓰라고 공식 문서가 안내한다. tools/live_relay_spike.py 참고).
+  socket.send(JSON.stringify({ type: "speech_start" }));
   speaking = true;
   firstAudioMs = null;
   spokeEndedAt = null;
@@ -168,7 +184,7 @@ talkBtn.addEventListener("pointerdown", (e) => {
     if (!speaking) return;
     speaking = false;
     spokeEndedAt = performance.now(); // 체감 지연의 시작점
-    socket.send(JSON.stringify({ type: "audio_end" }));
+    socket.send(JSON.stringify({ type: "speech_end" })); // 여기서 서버가 답을 만들기 시작한다
     talkBtn.classList.remove("recording");
     talkBtn.textContent = "누르고 말하기";
     setStatus("답을 기다립니다…");
