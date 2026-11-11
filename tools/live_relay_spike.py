@@ -19,12 +19,19 @@
     PYTHONPATH=. uv run uvicorn --app-dir tools live_relay_spike:app --port 8013
     PYTHONPATH=. uv run python tools/fake_browser_live.py /tmp/q16k.wav KHD_SEODANG
 
+아이폰으로 시험할 때는 이 서버를 켜고 HTTPS 터널 주소의 /live 를 Safari에서 연다
+(static/live_test.html. 마이크는 HTTPS에서만 열린다. README의 Cloudflare 터널 참고).
+
 주고받는 형식(정식 구현 때 docs/api.md에 적고 BE1·FE2와 합의한다):
     브라우저 → 서버: 첫 메시지 {"artwork_id": "..."} / 이후 16kHz PCM 바이트 / {"type":"audio_end"}
     서버 → 브라우저: {"type":"ready"|"heard"|"said"|"turn_complete"|"error"} / 24kHz PCM 바이트
 """
 import asyncio, json, os
+from pathlib import Path
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from google.genai import types
 from server.ask import build_artwork_context
 from server.content import load_artworks
@@ -33,6 +40,15 @@ from server.prompts import ASK_INSTRUCTION
 
 app = FastAPI()
 artworks = load_artworks()
+
+# 시험 페이지를 이 서버가 함께 내려준다. 운영 서버(server/app.py)는 건드리지 않는다.
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/live")
+def live_test_page():
+    return FileResponse(STATIC_DIR / "live_test.html")
 LIVE_MODEL = os.environ.get("LIVE_MODEL", "gemini-3.8-live")
 
 @app.websocket("/ws/live")
