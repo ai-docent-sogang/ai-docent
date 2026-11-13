@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- Live API 음성 왕복 시험 페이지. 담당: FE1. 운영 화면이 아니다(docs/FE1_Live_검토.md).
+     중계 서버: tools/live_relay_spike.py. 동작은 live_test.js. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Live 음성 시험</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #111; color: #f2f2f2;
+                 font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+    main { padding: 16px calc(16px + env(safe-area-inset-left)) calc(16px + env(safe-area-inset-bottom)); }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    .note { color: #888; font-size: 13px; margin: 0 0 16px; }
+    select, button { font-size: 16px; border-radius: 10px; border: 0; }
+    select { width: 100%; padding: 10px; margin-bottom: 10px;
+             border: 1px solid #555; background: #222; color: inherit; }
+    button { padding: 12px; background: #555; color: #fff; }
+    #talk { width: 100%; padding: 22px; background: #c0392b; font-weight: 600; font-size: 18px;
+            margin: 10px 0; -webkit-user-select: none; user-select: none; touch-action: none; }
+    #talk.recording { background: #e67e22; }
+    button:disabled { opacity: .4; }
+    #row { display: flex; gap: 8px; }
+    #row button { flex: 1; }
+    #status { color: #bbb; font-size: 14px; margin: 10px 0; }
+    #metrics { font-size: 12px; color: #8ab4f8; margin: 10px 0; word-break: keep-all; }
+    .box { background: #1b1b1b; border-radius: 10px; padding: 10px; margin: 8px 0; min-height: 44px; }
+    .box h2 { font-size: 12px; color: #888; margin: 0 0 4px; font-weight: normal; }
+    #log { margin-top: 14px; font-size: 12px; max-height: 40vh; overflow-y: auto; }
+    .line { padding: 3px 0; border-bottom: 1px solid #222; color: #aaa; }
+    .line.ok { color: #7ec699; }
+    .line.err { color: #e88; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Live 음성 시험</h1>
+  <p class="note">
+    Live API로 묻고 답을 듣는 경로를 아이폰에서 확인하는 페이지입니다. 운영 화면이 아닙니다.
+    HTTPS 주소에서만 마이크가 열립니다.
+  </p>
+
+  <select id="artwork" aria-label="작품"></select>
+  <button id="connect">연결하고 마이크 켜기</button>
+
+  <button id="talk" disabled>누르고 말하기</button>
+
+  <div id="row">
+    <button id="tone" type="button">시험음</button>
+    <button id="stop" type="button">재생 멈춤</button>
+  </div>
+
+  <div id="status">작품을 고르고 연결을 누르세요.</div>
+  <div id="metrics"></div>
+
+  <div class="box"><h2>들은 질문</h2><div id="heard"></div></div>
+  <div class="box"><h2>답변</h2><div id="said"></div></div>
+
+  <div id="log"></div>
+</main>
+<script type="module" src="/static/live_test.js"></script>
+</body>
+</html>

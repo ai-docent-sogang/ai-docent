@@ -1,0 +1,249 @@
+{
+  "created_at": "2026-11-11T06:35:30.205606+00:00",
+  "model": "gemini-3.8-live",
+  "sdk": "2.34.0",
+  "synthetic": true,
+  "text": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+  "rows": [
+    {
+      "voice": "Kore",
+      "repeat": 1,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 370,
+      "audio_bytes": 613922,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 647,
+      "total_ms": 13196,
+      "audio_seconds": 12.790041666666667,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Puck",
+      "repeat": 1,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 373,
+      "audio_bytes": 622082,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 623,
+      "total_ms": 13373,
+      "audio_seconds": 12.960041666666667,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Aoede",
+      "repeat": 1,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 450,
+      "audio_bytes": 503040,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 650,
+      "total_ms": 10933,
+      "audio_seconds": 10.48,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Aoede",
+      "repeat": 2,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 432,
+      "audio_bytes": 497282,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 686,
+      "total_ms": 10836,
+      "audio_seconds": 10.360041666666667,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Puck",
+      "repeat": 2,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 446,
+      "audio_bytes": 593288,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 843,
+      "total_ms": 13020,
+      "audio_seconds": 12.360166666666666,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Kore",
+      "repeat": 2,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 446,
+      "audio_bytes": 548642,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 714,
+      "total_ms": 11900,
+      "audio_seconds": 11.430041666666666,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Kore",
+      "repeat": 3,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 421,
+      "audio_bytes": 652802,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 865,
+      "total_ms": 14067,
+      "audio_seconds": 13.600041666666666,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Puck",
+      "repeat": 3,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 530,
+      "audio_bytes": 546242,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 646,
+      "total_ms": 11950,
+      "audio_seconds": 11.380041666666667,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or",
+      "script_exact": false
+    },
+    {
+      "voice": "Aoede",
+      "repeat": 3,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 517,
+      "audio_bytes": 598560,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 859,
+      "total_ms": 12982,
+      "audio_seconds": 12.47,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Aoede",
+      "repeat": 4,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 524,
+      "audio_bytes": 491042,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 1131,
+      "total_ms": 10747,
+      "audio_seconds": 10.230041666666667,
+      "output_transcript": "Take a moment to look closely.\nKim Hong-do.\nShin Yun-bok.\nSsireum.\nSeodang.\nWould you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Puck",
+      "repeat": 4,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 456,
+      "audio_bytes": 736800,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 684,
+      "total_ms": 15805,
+      "audio_seconds": 15.35,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Kore",
+      "repeat": 4,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 384,
+      "audio_bytes": 537602,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 657,
+      "total_ms": 11602,
+      "audio_seconds": 11.200041666666667,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do.Shin Yun-bok.Ssireum.Seodang.Would you likea short explanation,or more detail?",
+      "script_exact": false
+    },
+    {
+      "voice": "Kore",
+      "repeat": 5,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 433,
+      "audio_bytes": 544322,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 1038,
+      "total_ms": 11810,
+      "audio_seconds": 11.340041666666666,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": true
+    },
+    {
+      "voice": "Puck",
+      "repeat": 5,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 473,
+      "audio_bytes": 636000,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 581,
+      "total_ms": 13720,
+      "audio_seconds": 13.25,
+      "output_transcript": "Take a moment to look closely. Kim Hongdo. Shin Yunbok. Ssireum. Seodang. Would you like a short explanation, or more detail?",
+      "script_exact": false
+    },
+    {
+      "voice": "Aoede",
+      "repeat": 5,
+      "error": null,
+      "turn_complete": true,
+      "first_audio_ms": 480,
+      "audio_bytes": 612002,
+      "mimes": [
+        "audio/pcm;rate=24000"
+      ],
+      "connect_ms": 577,
+      "total_ms": 13254,
+      "audio_seconds": 12.750041666666666,
+      "output_transcript": "Take a moment to look closely. Kim Hong-do. Shin Yun-bok. Ssireum. Seodang. Would you like a short explanation, or more",
+      "script_exact": false
+    }
+  ]
+}
