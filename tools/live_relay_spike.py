@@ -57,6 +57,20 @@ def live_test_page():
     return FileResponse(STATIC_DIR / "live_test.html")
 LIVE_MODEL = os.environ.get("LIVE_MODEL", "gemini-3.8-live")
 
+# 말의 시작·끝에 붙이는 무음 길이(밀리초)와 그 PCM.
+#
+# 왜 필요한가(11/11 억양 60발화 측정에서 4건이 첫 단어나 끝 단어를 1개 놓쳤다):
+#   자동 음성 감지를 끈 수동 VAD에는 말 앞의 여유 버퍼와 침묵 허용이 없다. 공식 문서도
+#   activityStart 전에 소리를 조금 보내라고 안내한다. 경계에 바로 말이 붙으면 잘린다.
+SILENCE_MS = 300
+SILENCE_PCM = b"\x00\x00" * (16000 * SILENCE_MS // 1000)  # 16kHz 16bit 모노 무음
+
+
+async def send_silence(session):
+    """말의 경계에 무음을 넣어 첫 단어·끝 단어가 잘리지 않게 한다."""
+    await session.send_realtime_input(
+        audio=types.Blob(data=SILENCE_PCM, mime_type="audio/pcm;rate=16000"))
+
 @app.websocket("/ws/live")
 async def live(ws: WebSocket):
     await ws.accept()
@@ -121,7 +135,9 @@ async def live(ws: WebSocket):
                     kind = json.loads(msg["text"]).get("type")
                     if kind == "speech_start":   # 버튼을 누른 순간
                         await session.send_realtime_input(activity_start=types.ActivityStart())
+                        await send_silence(session)  # 첫 단어가 잘리지 않게 여유를 준다
                     elif kind == "speech_end":   # 버튼에서 손을 뗀 순간 → 여기서 답을 만들기 시작한다
+                        await send_silence(session)  # 끝 단어가 잘리지 않게
                         await session.send_realtime_input(activity_end=types.ActivityEnd())
             except Exception as e:
                 # 세션이 막 끊긴 경우. 바깥 루프가 다시 붙을 때까지 흘려보낸다.
