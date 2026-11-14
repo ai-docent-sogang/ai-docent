@@ -121,15 +121,22 @@ function openSocket() {
       }
       const data = JSON.parse(event.data);
       if (data.type === "reconnecting") {
-        // Gemini 세션이 닫혀 다시 붙는 중이다(질문 사이 2분 이상 비었을 때 일어난다).
-        // 폰과 서버 사이 연결은 그대로이므로 페이지를 새로 열 필요는 없다.
-        setStatus("연결을 다시 맺는 중… 잠시 뒤 다시 말해 보세요.");
-        log("Gemini 세션 재연결 중", "");
+        // Gemini 세션을 다시 맺는 중이다. 질문 사이 2분 이상 비었을 때, 그리고 연결 수명(약 10분)이
+        // 다해 서버가 스스로 새 연결로 옮길 때 온다. 폰과 서버 사이 연결은 그대로이므로 페이지를
+        // 새로 열 필요는 없다.
+        //
+        // 이 동안은 버튼을 잠근다. 눌러도 서버가 그 소리를 버리기 때문에, 열어 두면 관람객은
+        // 말했는데 답이 없는 것으로 보인다(docs/11-18_통합_인터페이스.md의 "버튼 잠금").
+        $("talk").disabled = true;
+        setStatus("연결을 다시 맺는 중… 잠시만요.");
+        log(`Gemini 세션 재연결 중${data.kept_conversation === false ? " (앞 대화는 이어지지 않는다)" : ""}`, "");
         return;
       }
       if (data.type === "reconnected") {
-        setStatus(`다시 연결됨 · ${data.model} · 이어서 물어보세요.`);
-        log("재연결 완료(대화 내용 유지)", "ok");
+        // kept_conversation === false 이면 재개 핸들을 쓸 수 없어 새 대화로 붙었다는 뜻이다.
+        const kept = data.kept_conversation !== false;
+        setStatus(`다시 연결됨 · ${data.model} · ${kept ? "이어서" : "처음부터 다시"} 물어보세요.`);
+        log(`재연결 완료(대화 내용 ${kept ? "유지" : "초기화"})`, kept ? "ok" : "err");
         $("talk").disabled = false;
         return;
       }
