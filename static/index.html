@@ -1,31 +1,184 @@
 <!doctype html>
-<!-- 폰 웹앱 화면. 담당: FE1. 동작은 app.js, 모양은 style.css. id를 바꾸면 app.js도 함께 고친다. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>AI Docent v0</title>
+  <meta name="theme-color" content="#f7f4ed">
+  <meta name="description" content="AIVY, a personal AI docent for Korean art.">
+  <title>AIVY | Your Art Journey</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <video id="camera" playsinline muted autoplay></video>
-  <div id="panel">
-    <div id="status">Tap Start, then allow camera and microphone.</div>
-    <div id="log"></div>
-    <form id="text-form">
-      <input id="text-input" placeholder="Or type a question" autocomplete="off">
-      <button type="submit">Send</button>
-    </form>
-    <div id="controls">
-      <button id="start">Start</button>
-      <button id="talk" disabled>Hold to talk</button>
-    </div>
-    <div>
-      <button id="test-voice" type="button">Test voice</button>
-      <button id="replay" type="button" disabled>Replay reply</button>
-      <div id="audio-status" role="status" aria-live="polite"></div>
-    </div>
-    <div id="meta"></div>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand"><span class="brand-symbol" aria-hidden="true">✳</span> AIVY <span class="brand-subtitle">AI DOCENT</span></div>
+      <span class="header-step" id="header-step">01 / 05</span>
+    </header>
+
+    <main class="app-main">
+      <!-- Onboarding. Region is deliberately a dropdown, matching Age group. -->
+      <section class="screen welcome-screen" id="welcome-screen" aria-labelledby="welcome-heading">
+        <div class="welcome-intro">
+          <p class="eyebrow">A PERSONAL JOURNEY THROUGH ART</p>
+          <h1 id="welcome-heading">See beyond<br>the canvas<span class="period">.</span></h1>
+          <p class="subheading">Discover Korean masterpieces through art and stories you already know.</p>
+        </div>
+
+        <div class="museum-visual" role="img" aria-label="An illustrated museum gallery with a visitor viewing a Korean landscape painting through a smartphone">
+          <svg viewBox="0 0 720 255" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <linearGradient id="gallery-wall" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ddd8c9"/>
+                <stop offset="100%" stop-color="#c1b9a5"/>
+              </linearGradient>
+              <linearGradient id="painting-ink" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#eef1ea"/>
+                <stop offset="100%" stop-color="#cbd5c9"/>
+              </linearGradient>
+              <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#9c937e"/>
+                <stop offset="100%" stop-color="#6e6d5f"/>
+              </linearGradient>
+            </defs>
+            <rect width="720" height="255" fill="url(#gallery-wall)"/>
+            <path d="M0 204H720V255H0Z" fill="url(#floor)"/>
+            <path d="M0 203H720" stroke="#b5ac97" stroke-width="4"/>
+            <rect x="100" y="16" width="350" height="192" rx="3" fill="#564e43"/>
+            <rect x="111" y="26" width="328" height="171" fill="#f4f1e8"/>
+            <rect x="118" y="33" width="314" height="157" fill="url(#painting-ink)"/>
+            <path d="M118 164Q162 111 203 134L252 56L285 110L322 46L376 123L432 82V190H118Z" fill="#7e8f82" opacity=".8"/>
+            <path d="M118 182L192 122L230 160L296 83L343 146L387 113L432 157V190H118Z" fill="#354d43" opacity=".9"/>
+            <path d="M128 184Q202 153 250 178T432 160" fill="none" stroke="#f0f0e7" stroke-width="18" opacity=".6"/>
+            <path d="M140 192L178 160L193 188M350 190L379 162L398 191" fill="none" stroke="#253f35" stroke-width="3"/>
+            <rect x="450" y="155" width="58" height="37" fill="#e7e4d7"/>
+            <path d="M455 164H501M455 170H494M455 176H498M455 182H479" stroke="#bbb6a6" stroke-width="2"/>
+            <ellipse cx="581" cy="229" rx="93" ry="21" fill="#4c5045" opacity=".17"/>
+            <path d="M520 245L522 161Q532 123 566 122Q606 120 625 162L647 245Z" fill="#314e43"/>
+            <ellipse cx="565" cy="107" rx="30" ry="36" fill="#b48368"/>
+            <path d="M536 104Q536 68 562 65Q585 65 596 90L592 110Q578 93 555 93L539 112Z" fill="#292d2a"/>
+            <path d="M579 143L544 176L509 129" fill="none" stroke="#b48368" stroke-width="16" stroke-linecap="round"/>
+            <rect x="491" y="105" width="29" height="50" rx="6" fill="#162b28" stroke="#a9b3a4" stroke-width="3" transform="rotate(-15 505 130)"/>
+            <rect x="498" y="113" width="16" height="29" rx="2" fill="#c1d2bb" transform="rotate(-15 505 130)"/>
+            <path d="M610 242L601 177L623 174L643 243" fill="#203b32"/>
+            <circle cx="67" cy="55" r="12" fill="#f7eacc" opacity=".5"/>
+          </svg>
+          <div class="visual-caption"><span class="dot" aria-hidden="true"></span> A new perspective on Korean art</div>
+        </div>
+
+        <form id="onboarding-form" class="onboarding-form">
+          <p class="eyebrow">PERSONALIZE YOUR VISIT</p>
+          <div class="form-grid">
+            <label class="field" for="country-select">
+              <span class="field-label">Region / Country</span>
+              <span class="select-shell"><select id="country-select" name="country" required>
+                <option value="North America">North America</option>
+                <option value="Europe">Europe</option>
+                <option value="China">China</option>
+                <option value="Japan">Japan</option>
+              </select></span>
+            </label>
+            <label class="field" for="age-select">
+              <span class="field-label">Age group</span>
+              <span class="select-shell"><select id="age-select" name="age" required>
+                <option value="10–19">10–19</option>
+                <option value="20–29" selected>20–29</option>
+                <option value="30–39">30–39</option>
+                <option value="40–49">40–49</option>
+                <option value="50–59">50–59</option>
+                <option value="60+">60+</option>
+              </select></span>
+            </label>
+          </div>
+          <div class="language-info">
+            <span>◉ &nbsp; AUTO LANGUAGE</span>
+            <output id="language-output" for="country-select">English</output>
+          </div>
+          <p class="language-note" id="language-note">Language follows your region. English is the default for Europe.</p>
+
+          <details class="prepare-panel">
+            <summary>BEFORE YOU BEGIN <span aria-hidden="true">+</span></summary>
+            <ul>
+              <li>Connect earphones if available</li>
+              <li>Turn off silent mode</li>
+              <li>Allow camera and microphone access</li>
+            </ul>
+          </details>
+          <button class="primary-button" id="start" type="submit">START EXPLORING <span aria-hidden="true">→</span></button>
+          <p class="privacy-note">PRIVATE SESSION &nbsp;·&nbsp; NOTHING IS SAVED TO YOUR DEVICE</p>
+        </form>
+      </section>
+
+      <!-- Live museum guide. Camera, recording and API element IDs preserve the v0 contract. -->
+      <section class="screen tour-screen" id="tour-screen" aria-label="Live AI docent conversation" hidden>
+        <div class="camera-stage">
+          <video id="camera" playsinline muted autoplay></video>
+          <div class="camera-placeholder" id="camera-placeholder">
+            <span aria-hidden="true">▧</span>
+            <p>Point your camera at a painting</p>
+            <small>If camera access is unavailable, you can still type a question.</small>
+          </div>
+          <div class="camera-overlay">
+            <span class="camera-live"><span class="live-dot" aria-hidden="true"></span> LIVE VIEW</span>
+            <span class="camera-hint">FRAME AN ARTWORK</span>
+          </div>
+        </div>
+        <div class="tour-body">
+          <div class="tour-heading">
+            <div><p class="eyebrow">YOUR PERSONAL ART GUIDE</p><h2>Explore & ask<span class="period">.</span></h2></div>
+            <button type="button" class="round-action" id="open-summary" aria-label="View your visit summary" title="Visit summary">▤</button>
+          </div>
+          <div class="tab-bar" role="tablist" aria-label="Explore artwork and dialogue">
+            <button id="tab-conversation" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-conversation">Conversation</button>
+            <button id="tab-artwork" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-artwork">Artwork</button>
+            <button id="tab-comparison" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-comparison">Compare</button>
+          </div>
+          <section id="panel-conversation" class="tab-panel conversation-panel" role="tabpanel" aria-labelledby="tab-conversation">
+            <p id="status" class="status-line" role="status" aria-live="polite">Ready to explore.</p>
+            <div id="log" class="message-log" aria-label="Conversation history" role="log" aria-live="polite">
+              <div class="chat-intro">Ask about what you see. Your AI docent will guide you.</div>
+            </div>
+            <div class="conversation-actions">
+              <button id="talk" class="talk-button" type="button" disabled><span aria-hidden="true">◉</span><span class="talk-label">Hold to talk</span></button>
+              <div class="audio-tools">
+                <button id="test-voice" type="button" class="text-button">Test voice</button>
+                <button id="replay" type="button" class="text-button" disabled>Replay reply</button>
+              </div>
+              <p id="audio-status" class="audio-status" role="status" aria-live="polite"></p>
+              <form id="text-form" class="text-form">
+                <label class="sr-only" for="text-input">Type a question</label>
+                <input id="text-input" placeholder="Or type a question…" autocomplete="off" maxlength="800">
+                <button type="submit" aria-label="Send question">➤</button>
+              </form>
+            </div>
+            <details class="debug-details"><summary>Connection details</summary><div id="meta"></div></details>
+          </section>
+          <section id="panel-artwork" class="tab-panel detail-panel" role="tabpanel" aria-labelledby="tab-artwork" hidden>
+            <div id="artwork-content" aria-live="polite"><p class="empty-state">An artwork appears here once your AI docent recognizes it.</p></div>
+          </section>
+          <section id="panel-comparison" class="tab-panel detail-panel" role="tabpanel" aria-labelledby="tab-comparison" hidden>
+            <div id="comparison-content" aria-live="polite"><p class="empty-state">Your docent will introduce a comparison when it fits the conversation.</p></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Session-only recap: one highlighted comparison per seen Korean artwork. -->
+      <section class="screen summary-screen" id="summary-screen" aria-labelledby="summary-heading" hidden>
+        <p class="eyebrow">YOUR VISIT AT A GLANCE</p>
+        <h1 id="summary-heading">Your art<br>journey<span class="period">.</span></h1>
+        <p class="subheading">A look back at the Korean artworks you explored and the connections you discovered.</p>
+        <div class="summary-stats">
+          <div><strong id="summary-artworks">00</strong><span>ARTWORKS</span></div>
+          <div><strong id="summary-pairings">00</strong><span>ART PAIRINGS</span></div>
+        </div>
+        <h2 class="summary-subtitle">YOUR DISCOVERIES</h2>
+        <div id="summary-list" class="summary-list"><p class="empty-state">Your discoveries will appear here as you explore.</p></div>
+        <p class="summary-disclaimer">Your visit is temporary. This summary disappears when you end the session.</p>
+        <div class="summary-actions">
+          <button id="back-to-tour" class="secondary-button" type="button">← CONTINUE EXPLORING</button>
+          <button id="end-visit" class="primary-button" type="button">END VISIT <span aria-hidden="true">→</span></button>
+        </div>
+      </section>
+    </main>
   </div>
   <script type="module" src="/static/app.js"></script>
 </body>
