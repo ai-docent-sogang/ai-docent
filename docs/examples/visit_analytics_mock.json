@@ -1,0 +1,31 @@
+{
+  "source_kind": "mock",
+  "exhibition_version": "fictional-ABC-v1",
+  "parameter_version": "illustration-T5-G4-H1",
+  "note": "모든 행은 합성 데이터다. 실제 작품·관람객·인식 결과가 아니다. 체류 구간을 직접 구성한 집계 입력이다.",
+  "visits": [
+    {"id": "M01", "observed_s": 72},
+    {"id": "M02", "observed_s": 50},
+    {"id": "M03", "observed_s": 68},
+    {"id": "M04", "observed_s": 8}
+  ],
+  "dwells": [
+    {"id": "D01", "visit": "M01", "artwork": "A", "start_s": 0, "end_s": 24, "recognized_s": 20},
+    {"id": "D02", "visit": "M01", "artwork": "B", "start_s": 28, "end_s": 48, "recognized_s": 20},
+    {"id": "D03", "visit": "M01", "artwork": "A", "start_s": 52, "end_s": 68, "recognized_s": 16},
+    {"id": "D04", "visit": "M02", "artwork": "B", "start_s": 0, "end_s": 30, "recognized_s": 30},
+    {"id": "D05", "visit": "M02", "artwork": "C", "start_s": 34, "end_s": 46, "recognized_s": 12},
+    {"id": "D06", "visit": "M03", "artwork": "A", "start_s": 0, "end_s": 18, "recognized_s": 18},
+    {"id": "D07", "visit": "M03", "artwork": "C", "start_s": 22, "end_s": 50, "recognized_s": 26},
+    {"id": "D08", "visit": "M03", "artwork": "A", "start_s": 54, "end_s": 64, "recognized_s": 10}
+  ],
+  "questions": [
+    {"id": "Q01", "visit": "M01", "at_s": 10, "dwell": "D01", "label": "technique", "outcome": "answered"},
+    {"id": "Q02", "visit": "M01", "at_s": 40, "dwell": "D02", "label": "context", "outcome": "no_source", "failed_text": "이 그림은 어떤 용도로 제작됐나요?"},
+    {"id": "Q03", "visit": "M01", "at_s": 60, "dwell": "D03", "label": "comparison", "outcome": "answered", "comparison_artwork": "B"},
+    {"id": "Q04", "visit": "M02", "at_s": 15, "dwell": "D04", "label": "meaning", "outcome": "no_source", "failed_text": "이 그림 속 사물은 어떤 뜻인가요?"},
+    {"id": "Q05", "visit": "M03", "at_s": 35, "dwell": "D07", "label": "meaning", "outcome": "answered"},
+    {"id": "Q06", "visit": "M03", "at_s": 59, "dwell": "D08", "label": "comparison", "outcome": "answered", "comparison_artwork": "C"},
+    {"id": "Q07", "visit": "M04", "at_s": 4, "dwell": null, "label": "unknown", "outcome": "error"}
+  ]
+}
