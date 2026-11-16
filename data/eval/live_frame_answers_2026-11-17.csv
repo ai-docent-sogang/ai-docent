@@ -1,0 +1,10 @@
+photo_file,artwork_id,condition,source_url,collected_by,collected_at,note
+KHD_SSIREUM.jpg,KHD_SSIREUM,clean_reproduction,https://commons.wikimedia.org/wiki/File:Danwon_Ssireum.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Kim Hong-do / 원본을 768px로 축소. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+KHD_SSIREUM.crop65.jpg,KHD_SSIREUM,crop65,https://commons.wikimedia.org/wiki/File:Danwon_Ssireum.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Kim Hong-do / 가운데 65%만 잘라 768px로 확대. 가까이 서서 일부만 보이는 경우를 흉내 낸 합성 조건. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+KHD_SSIREUM.rot8.jpg,KHD_SSIREUM,rot8_crop65,https://commons.wikimedia.org/wiki/File:Danwon_Ssireum.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Kim Hong-do / crop65를 8도 기울임. 비스듬히 든 경우를 흉내 낸 합성 조건. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+JS_INWANG.jpg,JS_INWANG,clean_reproduction,https://commons.wikimedia.org/wiki/File:Inwangjesaekdo.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Jeong Seon / 원본을 768px로 축소. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+JS_INWANG.crop65.jpg,JS_INWANG,crop65,https://commons.wikimedia.org/wiki/File:Inwangjesaekdo.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Jeong Seon / 가운데 65%만 잘라 768px로 확대. 가까이 서서 일부만 보이는 경우를 흉내 낸 합성 조건. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+JS_INWANG.rot8.jpg,JS_INWANG,rot8_crop65,https://commons.wikimedia.org/wiki/File:Inwangjesaekdo.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Jeong Seon / crop65를 8도 기울임. 비스듬히 든 경우를 흉내 낸 합성 조건. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+KJH_SEHAN.jpg,KJH_SEHAN,clean_reproduction,https://commons.wikimedia.org/wiki/File:Sehando.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Kim Jeong-hui / 원본을 768px로 축소. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+KJH_SEHAN.crop65.jpg,KJH_SEHAN,crop65,https://commons.wikimedia.org/wiki/File:Sehando.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Kim Jeong-hui / 가운데 65%만 잘라 768px로 확대. 가까이 서서 일부만 보이는 경우를 흉내 낸 합성 조건. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
+KJH_SEHAN.rot8.jpg,KJH_SEHAN,rot8_crop65,https://commons.wikimedia.org/wiki/File:Sehando.jpg,FE1,2026-11-17,Public domain (위키미디어 공용 표기) / credit: Kim Jeong-hui / crop65를 8도 기울임. 비스듬히 든 경우를 흉내 낸 합성 조건. 팀 기준 이미지 세트가 아니고 전시실 촬영도 아니다
