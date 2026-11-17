@@ -79,7 +79,7 @@ node tests/test_app_stt.mjs   # 음성 입력 버튼
 전용 시험 페이지를 쓴다. 운영 화면(`/`)과 별개이고 중계 스파이크 서버가 함께 내려준다.
 
 ```bash
-uv sync --extra live                                                  # websockets 설치
+uv sync                                                               # websockets 포함(기본 의존성)
 PYTHONPATH=. uv run uvicorn --app-dir tools live_relay_spike:app --port 8013
 cloudflared tunnel --url http://localhost:8013                        # 다른 터미널
 ```

@@ -23,7 +23,7 @@
     11/13에 정한 합격 기준(11점 한정 Top-1 70%)과 같은 조건이다.
   - 사진은 메모리에서만 다루고 저장하지 않는다. 저장소에 사진을 넣지 않는다(AGENTS.md).
 
-설치: uv sync --extra live
+설치: uv sync (websockets는 11/17에 기본 의존성으로 옮겼다)
 실행:
     PYTHONPATH=. uv run python tools/live_frame_recognition.py --answers data/eval/recognition_answers.csv
     PYTHONPATH=. uv run python tools/live_frame_recognition.py --self-test   # 프레임 전송 경로만 확인

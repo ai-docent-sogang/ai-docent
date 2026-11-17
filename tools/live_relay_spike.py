@@ -27,7 +27,7 @@
     - 마이크 음성이 답변 음성을 되받는 문제(에코) 처리.
     - 10분·15분을 넘는 실제 관람 길이의 실기기 확인(아래 처리는 모의 시험까지만 확인했다).
 
-설치: uv sync --extra live
+설치: uv sync (websockets는 11/17에 기본 의존성으로 옮겼다)
 실행:
     PYTHONPATH=. uv run uvicorn --app-dir tools live_relay_spike:app --port 8013
     PYTHONPATH=. uv run python tools/fake_browser_live.py /tmp/q16k.wav KHD_SEODANG

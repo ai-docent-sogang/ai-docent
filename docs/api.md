@@ -83,10 +83,58 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 임시 답변 모드: `.env`에 `ASK_MOCK=1`을 넣고 서버를 다시 켜면 Gemini 없이 `status: "mock"` 답변을 돌려줍니다.
 
+## WS `/ws/live` — 실시간 음성 (Gemini Live API, 11/17 제안)
+
+**지금 상태: 제안입니다. 이 경로는 아직 `server/app.py`에 없습니다.** 동작하는 코드는 `tools/live_relay_spike.py`의 스파이크뿐입니다(FE1, 아이폰 Safari 왕복 확인). 이 절은 BE1 리뷰를 받기 위해 형식을 먼저 적어 둔 것이고, **BE1이 승인하기 전까지 운영 서버는 건드리지 않습니다.**
+
+AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 폰이 Gemini Live에 직접 붙을 수 없고, 서버가 가운데서 음성을 중계합니다. 연결은 WebSocket 하나이고, 텍스트 메시지(JSON)와 바이너리 메시지(생 PCM)를 섞어서 주고받습니다.
+
+보내는 값 (폰 → 서버):
+
+| 순서 | 보내는 것 | 형식 |
+| --- | --- | --- |
+| 연결 직후 1회 | 어느 작품인지 | 텍스트 `{"artwork_id": "KHD_SSIREUM"}` |
+| 버튼 누름 | 말 시작 | 텍스트 `{"type": "speech_start"}` |
+| 누르고 있는 동안 | 마이크 소리 | 바이너리, 16kHz 모노 PCM16 |
+| 버튼 뗌 | 말 끝 | 텍스트 `{"type": "speech_end"}` |
+
+받는 값 (서버 → 폰):
+
+| 받는 것 | 형식 | 폰이 할 일 |
+| --- | --- | --- |
+| 준비됨 | `{"type": "ready", "model": "...", "artwork_title": "..."}` | 버튼 활성화 |
+| 받아쓴 질문 | `{"type": "heard", "text": "..."}` | 화면에 질문 표시 |
+| 답변 음성 | 바이너리, 24kHz 모노 PCM16 | 이어 붙여 재생 |
+| 답변 자막 | `{"type": "said", "text": "..."}` | 화면에 답 표시 |
+| 턴 끝 | `{"type": "turn_complete"}` | 버튼 다시 활성화 |
+| 재연결 중 | `{"type": "reconnecting", "kept_conversation": true/false}` | "잠시만요" 안내, 버튼 잠금 |
+| 다시 붙음 | `{"type": "reconnected", "kept_conversation": true/false}` | 버튼 활성화 |
+| 오류 | `{"type": "error", "message": "..."}` | 안내 문구 표시 |
+
+`kept_conversation`이 거짓이면 앞 대화가 이어지지 않으므로 폰은 안내 문구를 바꿉니다.
+
+형식에 영향을 주는 약속:
+
+- **자동 음성 감지(VAD)를 끄고** `activity_start`·`activity_end`로 말의 경계를 Gemini에 알립니다. 버튼을 누르는 동안만 소리를 보내므로 모델에 침묵이 전달되지 않아 말의 끝을 알 수 없습니다. 섞어 쓰면 첫 턴만 동작합니다.
+- **말의 앞뒤에 300ms 무음**을 넣습니다. 경계에 말이 바로 붙으면 첫 단어·끝 단어가 잘립니다(11/11 측정에서 완전 일치 10/25 → 25/25. 실제 아이폰 중계 경로에서의 재확인은 아직입니다).
+
+구현 내부 사정(큐 분리, `session.receive()` 재호출, 세션 수명 처리)은 이 문서 범위가 아닙니다. [`docs/11-18_통합_인터페이스.md`](11-18_통합_인터페이스.md) 1장을 보세요.
+
+아직 없는 것:
+
+| 없는 것 | 지금 상태 |
+| --- | --- |
+| 작품 변경 | 연결 직후 `artwork_id`를 한 번 받고 고정합니다. 관람객이 다른 작품으로 옮기는 방법은 정하지 않았습니다 |
+| 세션 기억 연동 | 중계가 `server/session.py`를 쓰지 않습니다. 그래서 FE2 요약 화면(본 작품 수, 비교 수)이 빕니다 |
+| 비교 설명 | 지시문으로 `ASK_INSTRUCTION`(작품 한 점)을 써서 `data/comparisons.csv`의 비교쌍을 쓰지 않습니다. 지금 그대로 서버에 넣으면 "외국 작품과 비교"가 빠집니다 |
+| 에코 처리 | 마이크가 답변 음성을 되받는 문제를 다루지 않습니다(이어폰 사용 전제) |
+| 여러 관람객 동시 접속 | 단일 세션입니다. 인증도 없습니다(11/13 결정, 12/1 범위) |
+| 10분 넘는 연결 | 세션 수명 처리는 모의 시험까지만 확인했고 실기기 확인은 아직입니다 |
+
 ## 바꿀 때 확인할 곳
 
 | 바꾸는 것 | 함께 고칠 파일 |
 | --- | --- |
 | 보내는 필드 | `server/app.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
 | 받는 필드 | `server/app.py`의 응답, `server/gemini_client.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
-| 실시간 음성(Gemini Live API)으로 전환 | 이 문서 전체를 새로 씁니다(역할 가이드 3장의 방식 비교 실험 결과에 따라 결정) |
+| 실시간 음성(Gemini Live API) 주고받는 형식 | 위 [WS `/ws/live`](#ws-wslive--실시간-음성-gemini-live-api-1117-제안) 절, `tools/live_relay_spike.py`, `static/live_test.js`, `static/live_mic_worklet.js`, `static/live_player.js` (전환은 11/11 회의에서 확정) |
