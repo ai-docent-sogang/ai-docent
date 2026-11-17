@@ -83,54 +83,74 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 임시 답변 모드: `.env`에 `ASK_MOCK=1`을 넣고 서버를 다시 켜면 Gemini 없이 `status: "mock"` 답변을 돌려줍니다.
 
-## WS `/ws/live` — 실시간 음성 (Gemini Live API, 11/17 추가)
+## WS `/ws/live` — 실시간 음성 (Gemini Live API, 11/17 추가 · 11/18 handsfree 추가)
 
-담당: 중계는 FE1(`server/live.py`), 지시문은 BE1(`server/live_context.py`). 경로는 11/17에 BE1과 합의했습니다.
+담당: 중계는 FE1(`server/live.py`), 지시문 조각은 BE1(`server/prompts.py`의 `LIVE_INSTRUCTION`, `server/live_context.py`). 경로는 11/17에 BE1과 합의했고, handsfree 형식은 11/18 T1·T2 계약으로 정했습니다.
 
-`tools/live_relay_spike.py`는 운영 서버를 켜지 않고 중계만 띄우는 시험 서버이고, 같은 코드를 씁니다.
+`tools/live_relay_spike.py`는 운영 서버를 켜지 않고 중계만 띄우는 시험 서버입니다.
 
 AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 폰이 Gemini Live에 직접 붙을 수 없고, 서버가 가운데서 음성을 중계합니다. 연결은 WebSocket 하나이고, 텍스트 메시지(JSON)와 바이너리 메시지(생 PCM)를 섞어서 주고받습니다.
 
+모드는 첫 메시지의 `"mode"`로 고릅니다.
+
+| 모드 | 쓰는 곳 | 말의 경계 | 작품 |
+| --- | --- | --- | --- |
+| `"handsfree"` | AIVY 관람객 화면(버튼 없는 대화) | Gemini 자동 음성 감지. 폰은 침묵까지 계속 보냅니다 | Live가 카메라 사진으로 알아보고 함수로 알립니다 |
+| `"push"` 또는 없음 | `/live` 시험 페이지(11/17 방식 그대로) | 버튼(`speech_start`·`speech_end`) | 첫 메시지의 `artwork_id`로 고정 |
+
 보내는 값 (폰 → 서버):
 
-| 순서 | 보내는 것 | 형식 |
+| 언제 | 보내는 것 | 형식 |
 | --- | --- | --- |
-| 연결 직후 1회 | 어느 작품인지, 관람객 프로필, 이어 쓸 관람 세션 | 텍스트 `{"artwork_id": "KHD_SSIREUM", "profile": {"country": "France", "age_group": "adult", "language": "en"}, "session_id": "..."}` |
-| 버튼 누름 | 말 시작 | 텍스트 `{"type": "speech_start"}` |
-| 누르고 있는 동안 | 마이크 소리 | 바이너리, 16kHz 모노 PCM16 |
-| 버튼 뗌 | 말 끝 | 텍스트 `{"type": "speech_end"}` |
+| 연결 직후 1회 (handsfree) | 모드, 이어 쓸 관람 세션, 관람객 프로필 | 텍스트 `{"mode": "handsfree", "session_id": "<POST /api/session 값>", "profile": {"country": "", "age_group": "", "language": "en"}}` — `artwork_id`는 없습니다 |
+| 연결 직후 1회 (push) | 어느 작품인지, 프로필, 관람 세션 | 텍스트 `{"artwork_id": "KHD_SSIREUM", "profile": {...}, "session_id": "..."}` |
+| 대화하는 내내 (handsfree) | 마이크 소리. **말이 없을 때도 계속** | 바이너리, 16kHz 모노 PCM16 |
+| 3초마다 (handsfree) | 카메라 사진 | 텍스트 `{"type": "frame", "jpeg": "<base64, 가로 최대 768px, 화질 0.7>"}` |
+| 글로 물을 때 (handsfree) | 글 질문 | 텍스트 `{"type": "text", "text": "..."}` |
+| 버튼 누름 / 누르는 동안 / 뗌 (push) | 말 시작 / 마이크 소리 / 말 끝 | `{"type": "speech_start"}` / 바이너리 16kHz PCM16 / `{"type": "speech_end"}` |
 
 받는 값 (서버 → 폰):
 
 | 받는 것 | 형식 | 폰이 할 일 |
 | --- | --- | --- |
-| 준비됨 | `{"type": "ready", "model": "...", "artwork_title": "...", "session_id": "..."}` | 버튼 활성화. `session_id`를 관람 요약에 씁니다 |
-| 받아쓴 질문 | `{"type": "heard", "text": "..."}` | 화면에 질문 표시 |
+| 준비됨 | `{"type": "ready", "model": "...", "mode": "handsfree", "voice": "Kore", "session_id": "..."}` (push는 `"artwork_title"`도 옵니다) | 대화 시작 표시. `session_id`를 관람 요약에 씁니다 |
+| 받아쓴 질문 | `{"type": "heard", "text": "..."}` (조각으로 여러 번) | 관람객 말풍선에 이어 붙임. **마이크로 들은 말만** 옵니다. handsfree 글 질문(`{"type":"text"}`)에는 보내지 않습니다(화면이 직접 그립니다) |
 | 답변 음성 | 바이너리, 24kHz 모노 PCM16 | 이어 붙여 재생 |
-| 답변 자막 | `{"type": "said", "text": "..."}` | 화면에 답 표시 |
-| 턴 끝 | `{"type": "turn_complete"}` | 버튼 다시 활성화 |
-| 재연결 중 | `{"type": "reconnecting", "kept_conversation": true/false}` | "잠시만요" 안내, 버튼 잠금 |
-| 다시 붙음 | `{"type": "reconnected", "kept_conversation": true/false}` | 버튼 활성화 |
-| 오류 | `{"type": "error", "message": "..."}` | 안내 문구 표시 |
+| 답변 자막 | `{"type": "said", "text": "..."}` (조각) | 도슨트 말풍선에 이어 붙임 |
+| 끼어들기 (handsfree) | `{"type": "interrupted"}` | **재생 중인 소리를 즉시 멈춥니다**(관람객이 말을 끊음). 뒤이어 `turn_complete`가 옵니다 |
+| 턴 끝 | `{"type": "turn_complete"}` | 다음 말풍선 준비(push는 버튼 다시 활성화) |
+| 작품 알아봄 (handsfree) | `{"type": "artwork", "artwork_id": "KHD_SSIREUM", "artwork_title": "..."}` | 인식 칩·요약에 기록. Live가 함수를 부를 때마다 오므로 같은 작품이 거듭 올 수 있습니다 |
+| 비교 꺼냄 (handsfree) | `{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": "KHD_SSIREUM"}` | 요약·상세의 비교에 누적 |
+| 재연결 중 | `{"type": "reconnecting", "kept_conversation": true/false}` | "잠시만요" 안내 |
+| 다시 붙음 | `{"type": "reconnected", "kept_conversation": true/false, ...ready와 같은 필드}` | 대화 재개 |
+| 오류 | `{"type": "error", "message": "..."}` | 안내 문구. AIVY 화면은 기존 `/api/turn` 버튼 방식으로 되돌아갑니다 |
 
-`profile`과 `session_id`는 없어도 됩니다. `profile`은 FE2 초기 설정값 세 필드이고(없으면 영어·성인으로 말합니다), **세션 중간에 바꾸지 않습니다**(11/17 BE1 결정). `session_id`는 `POST /api/session`에서 받은 값입니다. 보내지 않거나 서버를 다시 켜서 없어진 ID면 서버가 새로 만들어 `ready`에 담아 돌려줍니다.
+`profile`과 `session_id`는 없어도 됩니다. `profile`은 FE2 초기 설정값 세 필드이고(없으면 영어·성인으로 말합니다), **세션 중간에 바꾸지 않습니다**(11/17 BE1 결정). `session_id`는 `POST /api/session`에서 받은 값입니다. 보내지 않거나 서버를 다시 켜서 없어진 ID면 서버가 새로 만들어 `ready`에 담아 돌려줍니다. `kept_conversation`이 거짓이면 앞 대화가 이어지지 않으므로 폰은 안내 문구를 바꿉니다.
 
-`kept_conversation`이 거짓이면 앞 대화가 이어지지 않으므로 폰은 안내 문구를 바꿉니다.
+`voice`는 Live 목소리 이름입니다. 서버의 환경 변수 `LIVE_VOICE`로 고르고, 없으면 `Kore`입니다(11/13 팀 규칙). 두 모드가 같은 목소리를 씁니다.
 
-형식에 영향을 주는 약속:
+handsfree에서 서버가 하는 일 (형식에 영향을 주는 것만):
+
+- **연결되면 Live가 먼저** 짧게 인사하고 어디서 왔는지, 어떤 미술을 좋아하는지 묻습니다. 폰은 브라우저 음성으로 따로 인사하지 않습니다(목소리 하나로 통일).
+- Live는 함수 두 개를 부릅니다. `report_current_artwork(artwork_id)`(11점 ID 또는 `"unknown"`)를 부르면 서버가 그 작품의 확인된 사실과 비교 후보를 돌려주고 폰에 `artwork`를 보냅니다. `"unknown"`이면 `artwork`를 보내지 않고 Live가 관람객에게 그림을 비춰 달라고 합니다. `report_comparison(comparison_id)`는 지금 작품의 검증된 비교쌍만 받고, 받으면 폰에 `comparison`을 보냅니다.
+- 턴이 끝나면 `session.record_turn`에 들은 말(글 질문이면 그 원문), 지금 작품, 이번 턴에 보고된 비교를 남깁니다. 그래서 handsfree 경로에서는 요약 화면의 비교 수가 채워집니다(push는 여전히 0).
+- 사진과 소리는 Gemini에 넘기기만 하고 저장하지 않습니다.
+
+push에서 형식에 영향을 주는 약속:
 
 - **자동 음성 감지(VAD)를 끄고** `activity_start`·`activity_end`로 말의 경계를 Gemini에 알립니다. 버튼을 누르는 동안만 소리를 보내므로 모델에 침묵이 전달되지 않아 말의 끝을 알 수 없습니다. 섞어 쓰면 첫 턴만 동작합니다.
-- **말의 앞뒤에 300ms 무음**을 넣습니다. 경계에 말이 바로 붙으면 첫 단어·끝 단어가 잘립니다(11/11 측정에서 완전 일치 10/25 → 25/25. 실제 아이폰 중계 경로에서의 재확인은 아직입니다).
+- **말의 앞뒤에 300ms 무음**을 넣습니다. 경계에 말이 바로 붙으면 첫 단어·끝 단어가 잘립니다(11/11 측정에서 완전 일치 10/25 → 25/25).
 
-구현 내부 사정(큐 분리, `session.receive()` 재호출, 세션 수명 처리)은 이 문서 범위가 아닙니다. [`docs/11-18_통합_인터페이스.md`](11-18_통합_인터페이스.md) 1장을 보세요.
+구현 내부 사정(큐 분리, `session.receive()` 재호출, 세션 수명 처리)은 이 문서 범위가 아닙니다. `server/live.py` 머리말과 [`docs/11-18_통합_인터페이스.md`](11-18_통합_인터페이스.md) 1장을 보세요.
 
 아직 없는 것:
 
 | 없는 것 | 지금 상태 |
 | --- | --- |
-| 작품 변경 | 연결 직후 `artwork_id`를 한 번 받고 고정합니다. 관람객이 다른 작품으로 옮기는 방법은 정하지 않았습니다 |
-| 비교쌍 사용 기록 | 턴이 끝나면 `session.record_turn`으로 본 작품과 대화를 남기지만, `comparison_id`는 빈 값입니다. Live는 음성으로 답해서 어떤 비교를 썼는지 구조화된 값으로 알 수 없습니다(`/api/turn`은 받습니다). 그래서 요약 화면의 **비교 수는 Live 경로에서 0**입니다. 함수 호출로 받는 방법을 12/1 범위로 둡니다 |
-| 에코 처리 | 마이크가 답변 음성을 되받는 문제를 다루지 않습니다(이어폰 사용 전제) |
+| 작품 변경 (push) | 연결 직후 `artwork_id`를 한 번 받고 고정합니다. handsfree는 Live가 사진으로 바꿉니다 |
+| 비교쌍 사용 기록 (push) | push는 `comparison_id`를 빈 값으로 남깁니다. handsfree는 함수 호출로 받습니다 |
+| 에코 처리 | 서버에서 다루지 않습니다. handsfree는 마이크를 계속 열어 두므로 스피커 소리를 마이크가 다시 들으면 Live가 자기 말에 끼어들 수 있습니다(이어폰 또는 브라우저 echoCancellation 전제) |
+| 대화 중 프로필 반영 | 관람객이 말로 출신을 알려 줘도 비교 후보의 순서는 첫 메시지의 `profile`로 정합니다 |
 | 여러 관람객 동시 접속 | 단일 세션입니다. 인증도 없습니다(11/13 결정, 12/1 범위) |
 | 10분 넘는 연결 | 세션 수명 처리는 모의 시험까지만 확인했고 실기기 확인은 아직입니다 |
 
@@ -140,4 +160,4 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | --- | --- |
 | 보내는 필드 | `server/app.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
 | 받는 필드 | `server/app.py`의 응답, `server/gemini_client.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
-| 실시간 음성(Gemini Live API) 주고받는 형식 | 위 [WS `/ws/live`](#ws-wslive--실시간-음성-gemini-live-api-1117-추가) 절, `server/live.py`, `static/live_test.js`, `static/live_mic_worklet.js`, `static/live_player.js` (전환은 11/11 회의에서 확정) |
+| 실시간 음성(Gemini Live API) 주고받는 형식 | 위 [WS `/ws/live`](#ws-wslive--실시간-음성-gemini-live-api-1117-추가--1118-handsfree-추가) 절, `server/live.py`, `static/live_test.js`, `static/live_mic_worklet.js`, `static/live_player.js` (전환은 11/11 회의에서 확정) |
