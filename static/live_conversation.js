@@ -24,6 +24,13 @@
 //   - 페이지가 숨겨지면(setVisible(false)) 마이크·사진 전송만 멈추고 소켓은 그대로 둔다. 다시 보이면 재개하고,
 //     소켓이 죽었으면 기다리던 간격을 버리고 바로 재연결한다(간격도 1초부터 다시). 소리 장치가 멈춰 있으면 resume하고, 안 되면 onNeedsTap(한 번 누르면 resumeAudio()).
 //
+// 살아 있음 알림: ready 뒤 5초마다 {"type":"ping"}을 보낸다(숨김 중에도 소켓이 열려 있으면). 서버는 30초 동안
+// 폰에서 아무것도 못 받으면 연결을 닫는다(T1). 닫히면 위의 재연결이 잇는다.
+//
+// 새로고침 뒤 관람 잇기(11/18, 아이폰은 잠금 해제 뒤 페이지를 새로 불러온다): createVisitStore()가 sessionStorage에
+// {session_id, profile, started_at}만 저장한다(대화·사진·음성은 저장하지 않는다 — AGENTS.md). 페이지가 다시 뜨면
+// continueSavedVisit()이 같은 session_id로 resume:true 연결을 연다(/api/session을 새로 만들지 않는다).
+//
 // 아이폰 Safari 주의: AudioContext는 사용자가 누른 흐름 안에서, 첫 await 전에 만들어야 한다.
 // 그래서 prime()을 따로 두었다. START EXPLORING 처리의 맨 앞에서 부른다(live_test.js와 같은 이유).
 // 카메라 사진과 음성은 보내기만 하고 저장하지 않는다(AGENTS.md).
@@ -40,6 +47,10 @@ export const RECONNECT_FIRST_MS = 1000;
 export const RECONNECT_MAX_GAP_MS = 15000;
 // 음소거할 때 보내는 무음 길이. 마이크 조각이 100ms(1600샘플)이므로 6조각.
 export const MUTE_SILENCE_MS = 600;
+export const PING_INTERVAL_MS = 5000;
+// 새로고침 뒤 이어 갈 수 있는 관람 기록의 최대 나이.
+export const VISIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const VISIT_KEY = "aivy.liveVisit";
 const CHUNK_SAMPLES = 1600;
 const CHUNK_MS = 100;
 
@@ -143,6 +154,59 @@ export function createWakeLock({ nav = globalThis.navigator, onUnsupported } = {
   };
 }
 
+/**
+ * 관람 식별자 기록(sessionStorage). 식별자만 저장한다: {session_id, profile, started_at}.
+ * load()는 VISIT_MAX_AGE_MS(2시간) 안의 기록만 돌려주고, 오래됐거나 깨진 기록은 지운다.
+ * 저장소를 못 쓰면(사생활 보호 모드 등) 조용히 아무것도 하지 않는다.
+ */
+export function createVisitStore({ storage, now = () => Date.now(), maxAgeMs = VISIT_MAX_AGE_MS } = {}) {
+  const store = () => {
+    try { return storage || globalThis.sessionStorage || null; } catch { return null; }
+  };
+  const clear = () => { try { store()?.removeItem(VISIT_KEY); } catch { /* 저장소 없음 */ } };
+  return {
+    save({ session_id, profile }) {
+      if (!session_id) return;
+      try {
+        store()?.setItem(VISIT_KEY, JSON.stringify({ session_id, profile: profile || {}, started_at: now() }));
+      } catch { /* 저장소 없음 */ }
+    },
+    load() {
+      let rec = null;
+      try { rec = JSON.parse(store()?.getItem(VISIT_KEY) || "null"); } catch { rec = null; }
+      const age = rec ? now() - rec.started_at : NaN;
+      if (!rec || typeof rec.session_id !== "string" || !rec.session_id || !(age >= 0 && age <= maxAgeMs)) {
+        clear();
+        return null;
+      }
+      return { session_id: rec.session_id, profile: rec.profile || {}, started_at: rec.started_at };
+    },
+    clear,
+  };
+}
+
+/**
+ * 새로고침 뒤 "Tap to continue your visit"를 눌렀을 때(사용자 동작 안에서) 부른다.
+ * 카메라·마이크를 다시 얻고, 저장된 session_id로 resume:true 연결을 연다. /api/session은 부르지 않는다.
+ * 성공하면 {stream, ready}. 실패하면 기록을 지우고 얻은 장치를 멈춘 뒤 거절한다(부른 쪽이 첫 화면으로).
+ */
+export async function continueSavedVisit({ saved, conversation, store, getMedia }) {
+  conversation.prime(); // 첫 await 전에(아이폰 Safari)
+  let stream = null;
+  try {
+    stream = await getMedia();
+    const ready = await conversation.open({
+      sessionId: saved.session_id, profile: saved.profile, stream, resume: true,
+    });
+    return { stream, ready };
+  } catch (err) {
+    conversation.close();
+    stream?.getTracks?.().forEach((t) => t.stop());
+    store?.clear();
+    throw err;
+  }
+}
+
 // 말풍선 이어 붙이기. 같은 턴의 조각은 같은 말풍선에 붙이고, 턴이 끝나면 다음 조각은 새 말풍선으로.
 export function createTranscript(log, doc = globalThis.document) {
   let visitor = null;
@@ -226,6 +290,8 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
   let retryTimer = null;
   let attemptInFlight = false;
   let frameTimer = null;
+  let pingTimer = null;
+  let everReady = false; // 이 대화에서 ready를 한 번이라도 받았는가(onReady/onReconnected 구분)
   let state = "connecting";
   const stats = { audioChunksSent: 0, silenceChunksSent: 0, framesSent: 0, reconnectAttempts: 0 };
 
@@ -282,9 +348,15 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
   }
 
   // 마이크·사진·재생·재연결을 모두 멈춘다.
+  function sendPing() {
+    if (ready && !closed && isOpen()) sendJson({ type: "ping" }); // 숨김 중에도 보낸다
+  }
+
   function stopAll(code) {
     closed = true;
     stopFrames();
+    if (pingTimer !== null) timers.clearInterval(pingTimer);
+    pingTimer = null;
     if (retryTimer !== null) timers.clearTimeout(retryTimer);
     retryTimer = null;
     player.stop();
@@ -377,9 +449,11 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
             linkDown = false;
             serverReconnecting = false;
             startFrames();
+            if (pingTimer === null) pingTimer = timers.setInterval(sendPing, PING_INTERVAL_MS);
             emit(idleState());
-            if (resume) handlers.onReconnected?.(data);
-            else handlers.onReady?.(data);
+            if (everReady) handlers.onReconnected?.(data);
+            else handlers.onReady?.(data); // 새로고침 뒤 resume:true로 연 첫 연결도 여기(data.resumed로 구분)
+            everReady = true;
             settle(null, data);
             break;
           case "heard":
@@ -447,13 +521,16 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
       mic.prime();
     },
 
-    /** 처음 연결. ready까지 기다린다. 실패하면 거절된다(부른 쪽이 기존 방식으로 대체). */
-    async open({ sessionId, profile, stream }) {
+    /**
+     * 처음 연결. ready까지 기다린다. 실패하면 거절된다(부른 쪽이 기존 방식으로 대체).
+     * resume: true는 새로고침 뒤 같은 관람을 이을 때(첫 메시지에 resume:true).
+     */
+    async open({ sessionId, profile, stream, resume = false }) {
       emit("connecting");
       hello = { mode: "handsfree", session_id: sessionId || "", profile: profile || {} };
       try {
         await mic.start(stream, onMicChunk);
-        return await connect(false, openTimeoutMs);
+        return await connect(Boolean(resume), openTimeoutMs);
       } catch (err) {
         stopAll();
         throw err;

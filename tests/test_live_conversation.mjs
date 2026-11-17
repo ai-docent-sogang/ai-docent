@@ -7,10 +7,11 @@
 //              artwork/comparison 전달, 3초 주기 사진 전송, 글 질문, ready 뒤 끊김·error에서 자동 재연결
 //              (resume:true, 1·2·4·8·15초 뒤 15초 간격, 기한 없이·대체 없이), ready 전 실패·시간 초과에서 open() 거절,
 //              숨김·다시 보임에서 전송 정지·재개·소리 장치 resume·마이크 다시 얻기, 화면 꺼짐 막기(Wake Lock),
-//              close()가 마이크·사진·재생·소켓을 모두 멈추는지.
+//              close()가 마이크·사진·재생·소켓을 모두 멈추는지, 5초 ping, 새로고침 뒤 관람 잇기(sessionStorage 기록·
+//              2시간 제한·resume:true 첫 메시지·/api/session 없음·실패 시 기록 삭제).
 import assert from "node:assert";
 
-const { createLiveConversation, createWakeLock, FRAME_INTERVAL_MS } = await import(
+const { createLiveConversation, createWakeLock, createVisitStore, continueSavedVisit, FRAME_INTERVAL_MS, PING_INTERVAL_MS } = await import(
   new URL("../static/live_conversation.js", import.meta.url)
 );
 
@@ -563,6 +564,117 @@ const flush = () => new Promise((r) => setImmediate(r));
   assert.equal(await denied.request(), false, "거절(iOS 18.3 이하 부분 지원 등)도 예외로 처리");
   assert.equal(notes2, 1);
   console.log("  ⑯ Wake Lock 요청·재요청·미지원·거절");
+}
+
+// ⑰ ping: ready 뒤 5초마다, 숨김 중에도, 닫히면 멈춤
+{
+  const t = setup();
+  t.conv.prime();
+  const opened = t.conv.open({ sessionId: "S1", profile: PROFILE, stream: {} });
+  await Promise.resolve();
+  const ws = FakeSocket.last;
+  ws.serverOpen();
+  t.timers.tick(10000);
+  const pings = () => ws.json().filter((m) => m.type === "ping").length;
+  assert.equal(pings(), 0, "ready 전에는 ping 없음");
+  ws.serverSend({ type: "ready", model: "m" });
+  await opened;
+  assert.equal(PING_INTERVAL_MS, 5000);
+  t.timers.tick(4999);
+  assert.equal(pings(), 0);
+  t.timers.tick(1);
+  assert.equal(pings(), 1, "5초에 한 번");
+  assert.deepEqual(ws.json().filter((m) => m.type === "ping")[0], { type: "ping" });
+  await t.conv.setVisible(false);
+  t.timers.tick(10000);
+  assert.equal(pings(), 3, "숨김 중에도 보낸다(서버 30초 무응답 종료를 막는다)");
+  ws.serverClose(1006); // 숨김 중 서버가 닫음 → 재연결 중
+  t.timers.tick(500);
+  assert.equal(pings(), 3, "소켓이 닫히면 보내지 않는다");
+  t.conv.close();
+  assert.equal(t.timers.active, 0, "close()하면 ping 타이머도 멈춘다");
+  console.log("  ⑰ ping 5초 주기, ready 전 없음, 숨김 중에도 전송, 닫히면·close()로 멈춤");
+}
+
+// ⑱ 관람 기록(sessionStorage): 식별자만 저장, 지우기, 2시간 넘으면 무시, 깨진 기록·저장소 없음
+{
+  const mem = new Map();
+  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  let clock = 1_000_000;
+  const store = createVisitStore({ storage, now: () => clock });
+  assert.equal(store.load(), null, "기록이 없으면 null");
+  store.save({ session_id: "S9", profile: PROFILE });
+  const raw = JSON.parse([...mem.values()][0]);
+  assert.deepEqual(Object.keys(raw).sort(), ["profile", "session_id", "started_at"], "식별자만 저장한다(대화·사진·음성 없음)");
+  assert.deepEqual(store.load(), { session_id: "S9", profile: PROFILE, started_at: 1_000_000 });
+  clock += 2 * 60 * 60 * 1000;
+  assert.equal(store.load()?.session_id, "S9", "딱 2시간까지는 이어 간다");
+  clock += 1;
+  assert.equal(store.load(), null, "2시간이 넘으면 무시한다");
+  assert.equal(mem.size, 0, "오래된 기록은 지운다");
+  store.save({ session_id: "S10", profile: PROFILE });
+  store.clear(); // END VISIT
+  assert.equal(store.load(), null, "END VISIT에서 지운다");
+  mem.set([...mem.keys()][0] || "aivy.liveVisit", "{not json");
+  assert.equal(store.load(), null, "깨진 기록은 무시");
+  const broken = createVisitStore({ storage: { getItem() { throw new Error("denied"); }, setItem() { throw new Error("denied"); }, removeItem() { throw new Error("denied"); } } });
+  broken.save({ session_id: "X" });
+  assert.equal(broken.load(), null, "저장소를 못 쓰면 조용히 null");
+  console.log("  ⑱ sessionStorage 기록 저장·END VISIT 삭제·2시간 제한·깨진 기록·저장소 없음");
+}
+
+// ⑲ 새로고침 뒤 "Tap to continue": 같은 session_id로 resume:true, /api/session 없음 / 실패하면 기록 삭제
+{
+  const fetched = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => { fetched.push(u); throw new Error("must not fetch"); };
+  const cleared = [];
+  const store = { clear: () => cleared.push(1) };
+  const track = { stopped: false, stop() { this.stopped = true; } };
+  const stream = { getTracks: () => [track] };
+
+  const t = setup();
+  const pending = continueSavedVisit({
+    saved: { session_id: "S7", profile: PROFILE }, conversation: t.conv, store, getMedia: async () => stream,
+  });
+  assert.equal(t.player.started, 1, "누른 흐름 안에서 바로 prime(아이폰 소리 허용)");
+  for (let i = 0; i < 3 && FakeSocket.last?.url !== "ws://test/ws/live"; i++) await Promise.resolve();
+  await flush();
+  const ws = FakeSocket.last;
+  ws.serverOpen();
+  assert.deepEqual(ws.json()[0], { mode: "handsfree", session_id: "S7", profile: PROFILE, resume: true },
+    "저장된 session_id·profile로 resume:true");
+  ws.serverSend({ type: "ready", model: "m", mode: "handsfree", session_id: "S7", resumed: true });
+  const out = await pending;
+  assert.equal(out.ready.resumed, true);
+  assert.equal(out.stream, stream);
+  assert.equal(t.events.ready.length, 1, "새로고침 뒤 첫 연결은 onReady(resumed로 인사 여부 구분)");
+  assert.equal(t.conv.state, "listening");
+  assert.deepEqual(fetched, [], "/api/session을 새로 만들지 않는다");
+  assert.equal(cleared.length, 0);
+
+  const f = setup();
+  const failing = continueSavedVisit({
+    saved: { session_id: "GONE", profile: PROFILE }, conversation: f.conv, store, getMedia: async () => stream,
+  });
+  await flush();
+  FakeSocket.last.serverOpen();
+  FakeSocket.last.serverSend({ type: "error", message: "unknown session" });
+  await assert.rejects(failing, /unknown session/);
+  assert.equal(cleared.length, 1, "실패하면 기록을 지운다(첫 화면으로)");
+  assert.equal(track.stopped, true, "실패하면 다시 얻은 카메라·마이크를 멈춘다");
+  assert.equal(f.mic.stopped, 1);
+
+  const g = setup();
+  track.stopped = false;
+  await assert.rejects(continueSavedVisit({
+    saved: { session_id: "S7", profile: PROFILE }, conversation: g.conv, store,
+    getMedia: async () => { throw new Error("NotAllowedError"); },
+  }), /NotAllowed/);
+  assert.equal(cleared.length, 2, "카메라·마이크 거부도 실패로 기록 삭제");
+  assert.deepEqual(fetched, []);
+  globalThis.fetch = realFetch;
+  console.log("  ⑲ 새로고침 뒤 이어 가기: resume:true·/api/session 없음·onReady, 실패·장치 거부 시 기록 삭제·장치 정지");
 }
 
 console.log("live_conversation.js 검사 통과");
