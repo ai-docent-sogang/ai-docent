@@ -49,7 +49,7 @@ PYTHONPATH=. .venv/bin/python experiments/voice/voice_output_experiment.py \
 
 ## 결과 확인하기
 
-2026-11-11 측정 결과는 [`docs/FE1_음성_실험_2026-11-11.md`](../../docs/FE1_음성_실험_2026-11-11.md)에 정리했다. 행별 점수와 측정값은 다음 파일에 있다.
+2026-11-11 측정 결과는 [`docs/FE1/FE1_음성_실험_2026-11-11.md`](../../docs/FE1/FE1_음성_실험_2026-11-11.md)에 정리했다. 행별 점수와 측정값은 다음 파일에 있다.
 
 - [`voice_60_recovered.json`](../../data/eval/voice_60_recovered.json)
 - [`voice_boundary_2026-11-11.json`](../../data/eval/voice_boundary_2026-11-11.json)
