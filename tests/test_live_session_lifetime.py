@@ -67,6 +67,13 @@ class WaitClientContent:
         self.count, self.messages = count, messages
 
 
+class Delay:
+    """seconds초 뒤에 내보내는 턴(폰이 보낸 것이 서버에 먼저 닿게 할 때)."""
+
+    def __init__(self, seconds, messages):
+        self.seconds, self.messages = seconds, messages
+
+
 class FakeSession:
     """대본대로 메시지를 내보내는 가짜 Live 세션. receive()를 부를 때마다 한 턴을 내보낸다."""
 
@@ -92,6 +99,9 @@ class FakeSession:
         turn = self.turns.pop(0)
         if isinstance(turn, BaseException):
             raise turn
+        if isinstance(turn, Delay):
+            await asyncio.sleep(turn.seconds)
+            turn = turn.messages
         if isinstance(turn, WaitClientContent):
             # 폰이 글을 보낼 때까지 이 턴을 내보내지 않는다(실제 Gemini도 질문을 받고서 답한다).
             while len(self.client_content) < turn.count:
@@ -507,6 +517,99 @@ with TestClient(server_app) as c:
 check("둘째 연결은 ready를 받는다", first2.get("type") == "ready", str(first2))
 check("앞 연결은 닫힌다", closed.get("code") == 4000 or "exc" in closed, str(closed))
 check("지금 연결 목록에서 정리된다", v.session_id not in relay.active_connections)
+
+# ── 21~23. 11/18 실기기 결과로 더한 것 ──────────────────────────────────
+def watch_close(first, pings_for=0.0, wait=4.0, script=None):
+    """폰처럼 붙고 pings_for초 동안 0.2초마다 ping을 보낸 뒤 입력을 멈춘다. (닫힌 코드, 닫히기까지 초, fake)."""
+    fake = FakeClient(script or [[[msg(handle="hZ")]]])
+    relay.make_client = lambda: fake
+    out = {}
+    with TestClient(server_app) as c:
+        with c.websocket_connect("/ws/live") as ws:
+            ws.send_text(json.dumps(first))
+            out["ready"] = json.loads(ws.receive_text())
+            started = time.monotonic()
+
+            def pinger():
+                while time.monotonic() - started < pings_for:
+                    ws.send_text(json.dumps({"type": "ping"}))
+                    time.sleep(0.2)
+
+            def watch():
+                try:
+                    while True:
+                        m = ws.receive()
+                        if m.get("type") == "websocket.close":
+                            out["code"], out["after"] = m.get("code"), time.monotonic() - started
+                            return
+                except Exception as e:
+                    out["exc"] = repr(e)
+
+            threading.Thread(target=pinger, daemon=True).start()
+            th = threading.Thread(target=watch, daemon=True)
+            th.start()
+            th.join(wait)
+            if "code" not in out:
+                ws.close()
+    return out, fake
+
+
+print("21. 폰이 아무것도 보내지 않으면 죽은 연결로 보고 닫는다(handsfree)")
+saved_idle = relay.PHONE_IDLE_S
+relay.PHONE_IDLE_S = 0.6
+v = sessions.create_session()
+out, fake = watch_close({"mode": "handsfree", "session_id": v.session_id})
+check("입력이 없으면 닫는다(코드 4001)", out.get("code") == 4001, str(out))
+check("정한 시간쯤에 닫는다", 0.5 <= out.get("after", 0) <= 2.0, f"{out.get('after', 0):.2f}초")
+check("재개 핸들은 저장소에 남는다", relay.resume_store.get(v.session_id, {}).get("handle") == "hZ",
+      str(relay.resume_store.get(v.session_id)))
+check("지금 연결 목록에서 정리된다", v.session_id not in relay.active_connections)
+out, fake = watch_close({"mode": "handsfree", "session_id": sessions.create_session().session_id}, pings_for=1.5)
+check("ping이 오는 동안은 닫지 않고, 멈추면 닫는다",
+      out.get("code") == 4001 and out.get("after", 0) >= 1.5, str(out))
+check("ping은 Gemini로 보내지 않는다", fake.session.sent == [] and fake.session.client_content[1:] == [],
+      str(fake.session.sent)[:100])
+out, fake = watch_close({"artwork_id": ARTWORK}, wait=1.5)
+check("push 모드는 입력이 없어도 닫지 않는다(버튼 사이에는 보내는 것이 없다)", "code" not in out, str(out))
+relay.PHONE_IDLE_S = saved_idle
+
+print("22. 추임새에 답하지 않게: 지시문과 자동 음성 감지 조절점")
+got, fake = run([[[msg(said="hi", turn_complete=True)]]], expect=3, first=HANDSFREE)
+aad = fake.configs[0].realtime_input_config.automatic_activity_detection
+check("기본값: 시작 민감도 LOW, 침묵 700ms, 앞 여유 300ms",
+      aad.start_of_speech_sensitivity == relay.types.StartSensitivity.START_SENSITIVITY_LOW
+      and aad.silence_duration_ms == 700 and aad.prefix_padding_ms == 300, str(aad))
+check("지시문에 추임새·혼잣말에는 침묵하라는 규칙이 있다", "backchannel" in fake.instructions[0])
+saved = (relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS)
+relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS = "HIGH", 550, 200
+got, fake = run([[[msg(said="hi", turn_complete=True)]]], expect=3, first=HANDSFREE)
+aad = fake.configs[0].realtime_input_config.automatic_activity_detection
+check("환경 변수 값이 설정에 들어간다(HIGH, 550, 200)",
+      aad.start_of_speech_sensitivity == relay.types.StartSensitivity.START_SENSITIVITY_HIGH
+      and aad.silence_duration_ms == 550 and aad.prefix_padding_ms == 200, str(aad))
+relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS = saved
+
+print("23. 사진 정책 on_speech: 연결 직후 1장, 말이 시작될 때 최신 1장")
+relay.FRAME_POLICY = "on_speech"
+A, B, C = (b"\xff\xd8A", b"\xff\xd8B", b"\xff\xd8C")
+got, fake = run([[
+    Delay(0.5, [msg(heard="Who painted"), msg(heard=" this?"),
+                msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])]),
+    [msg(said="Kim Hong-do.", turn_complete=True)],
+]], expect=6, first=HANDSFREE, linger=0.3, after_ready=[
+    {"type": "frame", "jpeg": base64.b64encode(x).decode()} for x in (A, B, C)])
+videos = [x["video"].data for x in fake.session.sent if "video" in x]
+check("연결 직후 첫 사진과, 말이 시작될 때의 최신 사진만 넘긴다", videos == [A, C], str(videos))
+check("이 정책에서도 report_current_artwork가 동작한다",
+      fake.session.tool_responses and fake.session.tool_responses[0].response.get("artwork_id") == ARTWORK
+      and "artwork" in types_of(got), str(types_of(got)))
+relay.FRAME_POLICY = "every"
+
+print("24. 답변 받아쓰기의 말 아닌 표시는 폰에 보내지 않는다")
+got, fake = run([[[msg(said="<no speech>"), msg(said="{pause}"), msg(said="\u200b"), msg(turn_complete=True)]]],
+                expect=2, first=HANDSFREE)
+check("표시만 있는 조각은 said로 보내지 않는다", types_of(got) == ["ready", "turn_complete"], str(types_of(got)))
+check("정상 문장은 그대로 둔다", relay.clean_said("Look at the shoes.") == "Look at the shoes.")
 
 print()
 if failures:

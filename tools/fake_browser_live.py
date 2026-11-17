@@ -23,6 +23,8 @@ handsfree 모드(11/18, 버튼 없는 대화):
     작품 ID 인자는 받지 않는다(Live가 사진으로 알아본다). --country=France 로 프로필을 줄 수 있다.
     --resume-after=N: N번째 질문 뒤에 폰 WS를 닫고, 같은 session_id와 "resume": true로 다시 붙어
     남은 질문을 잇는다(폰 화면 꺼짐·네트워크 끊김 흉내). 닫은 뒤 ready까지 걸린 시간과 resumed를 본다.
+    --backchannel=a.wav,b.wav: 질문을 다 한 뒤 추임새("Mm-hmm." 등)를 하나씩 흘리고 8초씩 지켜본다.
+    도슨트가 말하지 않아야 정상이다(11/18 실기기에서 추임새에도 답했다). 들은 말과 답을 그대로 적는다.
 """
 import base64, json, sys, time, wave
 import websockets, asyncio
@@ -30,6 +32,7 @@ import websockets, asyncio
 HANDSFREE = "--handsfree" in sys.argv
 FRAME = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--frame=")), None)
 COUNTRY = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--country=")), "")
+BACKCHANNEL = next((a.split("=", 1)[1].split(",") for a in sys.argv if a.startswith("--backchannel=")), [])
 RESUME_AFTER = next((int(a.split("=", 1)[1]) for a in sys.argv if a.startswith("--resume-after=")), 0)
 ARTWORK = None if HANDSFREE else sys.argv[1]
 # WAV를 여러 개 주면 한 연결에서 연달아 묻는다. 한 번만 묻는 시험으로는 11/11에 겪은
@@ -91,6 +94,9 @@ async def main():
 
 
 
+parts_last = [None]   # 추임새는 마지막 연결에서만 흘린다
+
+
 async def handsfree():
     """버튼 없이 계속 소리를 흘리며 묻는다. --resume-after가 있으면 중간에 끊고 다시 붙는다."""
     t0 = time.perf_counter()
@@ -99,6 +105,7 @@ async def handsfree():
     else:
         parts = [WAVS]
     session_id, closed_at, turn_no = "", None, 0
+    parts_last[0] = parts[-1]
     for i, wavs in enumerate(parts):
         result = await handsfree_connection(wavs, session_id, resume=i > 0, closed_at=closed_at, turn_no=turn_no)
         if result is None:
@@ -197,6 +204,37 @@ async def handsfree_connection(wavs, session_id, resume, closed_at, turn_no):
                 await spoken.wait()
                 ended = time.perf_counter() + 0.1        # 마지막 조각이 나간 시각
                 await one_turn(f"턴 {turn} ({seconds:.1f}초 질문, 기준=질문 소리를 다 보낸 시각)", ended)
+            for path in (BACKCHANNEL if wavs is parts_last[0] else []):
+                await asyncio.sleep(1.5)
+                with wave.open(path, "rb") as w:
+                    pcm = w.readframes(w.getnframes())
+                while not events.empty():
+                    events.get_nowait()
+                spoken.clear(); pending.extend(pcm)
+                await spoken.wait()
+                ended = time.perf_counter() + 0.1
+                audio = 0; first = None; heard = []; said = []; kinds = []
+                # 기본 8초를 지켜보고, 답이 오면 그 음성이 폰에서 다 재생될 만큼 더 기다린다(최대 40초).
+                def until():
+                    if first is None:
+                        return 8
+                    return min(40, first / 1000 + audio / 48000 + 1.5)
+                while time.perf_counter() - ended < until():
+                    try:
+                        at, d = await asyncio.wait_for(events.get(), timeout=max(0.05, until() - (time.perf_counter() - ended)))
+                    except asyncio.TimeoutError:
+                        break
+                    if isinstance(d, bytes):
+                        audio += len(d); first = first or round((at - ended) * 1000)
+                    else:
+                        kinds.append(d.get("type"))
+                        if d.get("type") == "heard": heard.append(d["text"])
+                        if d.get("type") == "said": said.append(d["text"])
+                verdict = "침묵(정상)" if not audio else f"답함 — 첫 음성 {first} ms, 음성 {audio/48000:.1f}초"
+                print(f"\n추임새 {path.rsplit('/', 1)[-1]}: {verdict}")
+                print(f"  [들은 말] {''.join(heard).strip()}")
+                print(f"  [답변] {''.join(said).strip()}")
+                print(f"  [받은 종류] {kinds}")
             return ready.get("session_id")
         except asyncio.TimeoutError:
             print("60초 안에 답이 오지 않았다. 자동 음성 감지가 말의 끝을 잡았는지 서버 로그를 본다.")
