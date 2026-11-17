@@ -1,6 +1,6 @@
 # `/api/ask` 응답 시간 측정 (FE1, 2026-11-11)
 
-담당: FE1 김도혁. 측정 데이터: [`data/eval/ask_latency.csv`](../data/eval/ask_latency.csv).
+담당: FE1 김도혁. 측정 데이터: [`data/eval/ask_latency.csv`](../../data/eval/ask_latency.csv).
 
 ## 왜 측정했나
 
@@ -55,6 +55,6 @@
 ## 다음
 
 - 아이폰 Safari에서 같은 10개를 돌려 네트워크와 음성 시작 시간을 포함한 체감 시간을 잰다
-  (`docs/FE1_아이폰_시험.md` A08).
+  (`docs/FE1/FE1_아이폰_시험.md` A08).
 - BE1이 Live API로 첫 응답 0.8초를 측정했다(PR #7). 8초와 0.8초의 차이는 FE1 작업량을 들여서라도
   살펴볼 값이다. 전환 여부는 팀 결정 사항이다.

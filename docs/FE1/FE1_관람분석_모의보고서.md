@@ -2,7 +2,7 @@
 
 **모든 숫자는 합성 데이터다. 실제 관람객·작품·인식 성능에 관한 측정 결과가 아니다.**
 
-자료: `docs/examples/visit_analytics_mock.json`. 가상 작품 A·B·C, 관측 세션 4건. 실제 기간 없음.
+자료: `docs/FE1/examples/visit_analytics_mock.json`. 가상 작품 A·B·C, 관측 세션 4건. 실제 기간 없음.
 전시 버전: `fictional-ABC-v1`. 예시 판정: `illustration-T5-G4-H1`.
 체류 판정 뒤의 구간을 직접 구성했다. 아래 집계의 재현성을 보여주며 연속 인식 판정기는 검증하지 않았다.
 

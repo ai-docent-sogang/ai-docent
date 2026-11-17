@@ -1,9 +1,9 @@
 question_id,question,lang,gold_label,ambiguous,note,source
-QL01,Who painted this work?,en,fact,0,,docs/FE1_음성_비교.md의 고정 시험 문장
+QL01,Who painted this work?,en,fact,0,,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
 QL02,When was this painted?,en,fact,0,,FE1 작성(합성)
 QL03,이 그림은 국보인가요?,ko,fact,0,,FE1 작성(합성)
 QL04,How big is the original?,en,fact,0,,FE1 작성(합성)
-QL05,Why are these people gathered here?,en,meaning,1,장면 설명이지만 제작 배경(context)으로도 읽힌다,docs/FE1_음성_비교.md의 고정 시험 문장
+QL05,Why are these people gathered here?,en,meaning,1,장면 설명이지만 제작 배경(context)으로도 읽힌다,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
 QL06,What does the tree in the corner symbolise?,en,meaning,0,,FE1 작성(합성)
 QL07,이 아이는 왜 울고 있나요?,ko,meaning,0,,FE1 작성(합성)
 QL08,What is happening in this scene?,en,meaning,0,,FE1 작성(합성)
@@ -11,23 +11,23 @@ QL09,Who was this painted for?,en,context,0,,FE1 작성(합성)
 QL10,이 그림은 어떤 용도로 제작됐나요?,ko,context,0,,FE1 작성(합성)
 QL11,What was happening in Korea when this was made?,en,context,0,,FE1 작성(합성)
 QL12,Was the painter famous in his own time?,en,context,1,화가의 상황이지만 fact로도 읽힌다,FE1 작성(합성)
-QL13,What materials did the artist use?,en,technique,0,,docs/FE1_음성_비교.md의 고정 시험 문장
+QL13,What materials did the artist use?,en,technique,0,,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
 QL14,How did he get the ink to look so dark?,en,technique,0,,FE1 작성(합성)
 QL15,"비단에 그린 건가요, 종이에 그린 건가요?",ko,technique,0,,FE1 작성(합성)
 QL16,Is this painted with one brush or many?,en,technique,0,,FE1 작성(합성)
-QL17,Can you compare this with a painting I might know?,en,comparison,0,,docs/FE1_음성_비교.md의 고정 시험 문장
-QL18,How is this different from the previous painting?,en,comparison,0,,docs/FE1_음성_비교.md의 고정 시험 문장
+QL17,Can you compare this with a painting I might know?,en,comparison,0,,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
+QL18,How is this different from the previous painting?,en,comparison,0,,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
 QL19,아까 본 그림이랑 어떻게 다른가요?,ko,comparison,0,,FE1 작성(합성)
 QL20,Does this look like Chinese landscape painting?,en,comparison,0,,FE1 작성(합성)
 QL21,Where is the next room?,en,navigation,0,,FE1 작성(합성)
 QL22,How do I make this louder?,en,navigation,0,,FE1 작성(합성)
 QL23,화장실이 어디예요?,ko,navigation,0,,FE1 작성(합성)
 QL24,Can I take a photo here?,en,navigation,0,관람 규칙을 navigation 정의에 넣어 애매함을 없앴다,FE1 작성(합성)
-QL25,Please give me a short explanation.,en,request,0,해설 길이 요청. request 라벨을 새로 만들었다,docs/FE1_음성_비교.md의 고정 시험 문장
-QL26,Could you explain that in more detail?,en,request,0,해설 상세 요청. request 라벨을 새로 만들었다,docs/FE1_음성_비교.md의 고정 시험 문장
+QL25,Please give me a short explanation.,en,request,0,해설 길이 요청. request 라벨을 새로 만들었다,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
+QL26,Could you explain that in more detail?,en,request,0,해설 상세 요청. request 라벨을 새로 만들었다,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
 QL27,Which of these paintings do you like most?,en,other,0,도슨트의 취향을 묻는 질문이라 작품 정보가 아니다,FE1 작성(합성)
-QL28,I am from France.,en,unknown,0,질문이 아니다,docs/FE1_음성_비교.md의 고정 시험 문장
-QL29,I like Impressionist paintings.,en,unknown,0,질문이 아니다,docs/FE1_음성_비교.md의 고정 시험 문장
-QL30,What am I looking at?,en,fact,1,작품의 정체를 묻는 것으로 봤다. meaning으로도 읽힌다,docs/FE1_음성_비교.md의 고정 시험 문장
+QL28,I am from France.,en,unknown,0,질문이 아니다,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
+QL29,I like Impressionist paintings.,en,unknown,0,질문이 아니다,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
+QL30,What am I looking at?,en,fact,1,작품의 정체를 묻는 것으로 봤다. meaning으로도 읽힌다,docs/FE1/FE1_음성_비교.md의 고정 시험 문장
 QL31,한국어로 말해 주세요.,ko,request,0,언어 변경 요청,FE1 작성(합성)
 QL32,Can you say that again more slowly?,en,request,0,반복·속도 요청,FE1 작성(합성)
