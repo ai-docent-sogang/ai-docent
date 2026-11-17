@@ -1,0 +1,491 @@
+{
+  "created_at": "2026-11-16T16:31:18.502176+00:00",
+  "model": "gemini-3.8-flash",
+  "sdk": "2.34.0",
+  "temperature": 0.0,
+  "gold_file": "data/eval/question_labels_2026-11-17.csv",
+  "repeats": 2,
+  "note": "일치율은 질문을 쓴 사람이 붙인 라벨과의 일치율이다. 독립 분류와 비교해야 실제 성능이 나온다.",
+  "rows": [
+    {
+      "question_id": "QL01",
+      "question": "Who painted this work?",
+      "lang": "en",
+      "gold": "fact",
+      "predicted": "fact",
+      "all_predictions": [
+        "fact",
+        "fact"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL02",
+      "question": "When was this painted?",
+      "lang": "en",
+      "gold": "fact",
+      "predicted": "fact",
+      "all_predictions": [
+        "fact",
+        "fact"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL03",
+      "question": "이 그림은 국보인가요?",
+      "lang": "ko",
+      "gold": "fact",
+      "predicted": "fact",
+      "all_predictions": [
+        "fact",
+        "fact"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL04",
+      "question": "How big is the original?",
+      "lang": "en",
+      "gold": "fact",
+      "predicted": "fact",
+      "all_predictions": [
+        "fact",
+        "fact"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL05",
+      "question": "Why are these people gathered here?",
+      "lang": "en",
+      "gold": "meaning",
+      "predicted": "meaning",
+      "all_predictions": [
+        "meaning",
+        "meaning"
+      ],
+      "stable": true,
+      "confidence": "0.9",
+      "ambiguous": true,
+      "agree": true
+    },
+    {
+      "question_id": "QL06",
+      "question": "What does the tree in the corner symbolise?",
+      "lang": "en",
+      "gold": "meaning",
+      "predicted": "meaning",
+      "all_predictions": [
+        "meaning",
+        "meaning"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL07",
+      "question": "이 아이는 왜 울고 있나요?",
+      "lang": "ko",
+      "gold": "meaning",
+      "predicted": "meaning",
+      "all_predictions": [
+        "meaning",
+        "meaning"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL08",
+      "question": "What is happening in this scene?",
+      "lang": "en",
+      "gold": "meaning",
+      "predicted": "meaning",
+      "all_predictions": [
+        "meaning",
+        "meaning"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL09",
+      "question": "Who was this painted for?",
+      "lang": "en",
+      "gold": "context",
+      "predicted": "context",
+      "all_predictions": [
+        "context",
+        "context"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL10",
+      "question": "이 그림은 어떤 용도로 제작됐나요?",
+      "lang": "ko",
+      "gold": "context",
+      "predicted": "context",
+      "all_predictions": [
+        "context",
+        "context"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL11",
+      "question": "What was happening in Korea when this was made?",
+      "lang": "en",
+      "gold": "context",
+      "predicted": "context",
+      "all_predictions": [
+        "context",
+        "context"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL12",
+      "question": "Was the painter famous in his own time?",
+      "lang": "en",
+      "gold": "context",
+      "predicted": "context",
+      "all_predictions": [
+        "context",
+        "context"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": true,
+      "agree": true
+    },
+    {
+      "question_id": "QL13",
+      "question": "What materials did the artist use?",
+      "lang": "en",
+      "gold": "technique",
+      "predicted": "technique",
+      "all_predictions": [
+        "technique",
+        "technique"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL14",
+      "question": "How did he get the ink to look so dark?",
+      "lang": "en",
+      "gold": "technique",
+      "predicted": "technique",
+      "all_predictions": [
+        "technique",
+        "technique"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL15",
+      "question": "비단에 그린 건가요, 종이에 그린 건가요?",
+      "lang": "ko",
+      "gold": "technique",
+      "predicted": "technique",
+      "all_predictions": [
+        "technique",
+        "technique"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL16",
+      "question": "Is this painted with one brush or many?",
+      "lang": "en",
+      "gold": "technique",
+      "predicted": "technique",
+      "all_predictions": [
+        "technique",
+        "technique"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL17",
+      "question": "Can you compare this with a painting I might know?",
+      "lang": "en",
+      "gold": "comparison",
+      "predicted": "comparison",
+      "all_predictions": [
+        "comparison",
+        "comparison"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL18",
+      "question": "How is this different from the previous painting?",
+      "lang": "en",
+      "gold": "comparison",
+      "predicted": "comparison",
+      "all_predictions": [
+        "comparison",
+        "comparison"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL19",
+      "question": "아까 본 그림이랑 어떻게 다른가요?",
+      "lang": "ko",
+      "gold": "comparison",
+      "predicted": "comparison",
+      "all_predictions": [
+        "comparison",
+        "comparison"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL20",
+      "question": "Does this look like Chinese landscape painting?",
+      "lang": "en",
+      "gold": "comparison",
+      "predicted": "comparison",
+      "all_predictions": [
+        "comparison",
+        "comparison"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL21",
+      "question": "Where is the next room?",
+      "lang": "en",
+      "gold": "navigation",
+      "predicted": "navigation",
+      "all_predictions": [
+        "navigation",
+        "navigation"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL22",
+      "question": "How do I make this louder?",
+      "lang": "en",
+      "gold": "navigation",
+      "predicted": "navigation",
+      "all_predictions": [
+        "navigation",
+        "navigation"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL23",
+      "question": "화장실이 어디예요?",
+      "lang": "ko",
+      "gold": "navigation",
+      "predicted": "navigation",
+      "all_predictions": [
+        "navigation",
+        "navigation"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL24",
+      "question": "Can I take a photo here?",
+      "lang": "en",
+      "gold": "navigation",
+      "predicted": "navigation",
+      "all_predictions": [
+        "navigation",
+        "navigation"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL25",
+      "question": "Please give me a short explanation.",
+      "lang": "en",
+      "gold": "request",
+      "predicted": "request",
+      "all_predictions": [
+        "request",
+        "request"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL26",
+      "question": "Could you explain that in more detail?",
+      "lang": "en",
+      "gold": "request",
+      "predicted": "request",
+      "all_predictions": [
+        "request",
+        "request"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL27",
+      "question": "Which of these paintings do you like most?",
+      "lang": "en",
+      "gold": "other",
+      "predicted": "other",
+      "all_predictions": [
+        "other",
+        "other"
+      ],
+      "stable": true,
+      "confidence": "0.9",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL28",
+      "question": "I am from France.",
+      "lang": "en",
+      "gold": "unknown",
+      "predicted": "unknown",
+      "all_predictions": [
+        "unknown",
+        "unknown"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL29",
+      "question": "I like Impressionist paintings.",
+      "lang": "en",
+      "gold": "unknown",
+      "predicted": "unknown",
+      "all_predictions": [
+        "unknown",
+        "unknown"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL30",
+      "question": "What am I looking at?",
+      "lang": "en",
+      "gold": "fact",
+      "predicted": "meaning",
+      "all_predictions": [
+        "meaning",
+        "meaning"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": true,
+      "agree": false
+    },
+    {
+      "question_id": "QL31",
+      "question": "한국어로 말해 주세요.",
+      "lang": "ko",
+      "gold": "request",
+      "predicted": "request",
+      "all_predictions": [
+        "request",
+        "request"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    },
+    {
+      "question_id": "QL32",
+      "question": "Can you say that again more slowly?",
+      "lang": "en",
+      "gold": "request",
+      "predicted": "request",
+      "all_predictions": [
+        "request",
+        "request"
+      ],
+      "stable": true,
+      "confidence": "high",
+      "ambiguous": false,
+      "agree": true
+    }
+  ]
+}
