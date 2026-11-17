@@ -5,7 +5,7 @@
 // 확인하는 것: 첫 메시지 형식(mode·session_id·profile), ready 뒤에만 마이크 PCM 전송·음소거(무음 600ms),
 //              heard/said 조각 이어 붙이기와 turn_complete에서 끊기, interrupted에서 재생 즉시 멈춤,
 //              artwork/comparison 전달, 3초 주기 사진 전송, 글 질문, ready 뒤 끊김·error에서 자동 재연결
-//              (resume:true, 1·2·4·8·15초 간격, 90초 뒤에만 대체 신호), ready 전 실패·시간 초과에서 open() 거절,
+//              (resume:true, 1·2·4·8·15초 뒤 15초 간격, 기한 없이·대체 없이), ready 전 실패·시간 초과에서 open() 거절,
 //              숨김·다시 보임에서 전송 정지·재개·소리 장치 resume·마이크 다시 얻기, 화면 꺼짐 막기(Wake Lock),
 //              close()가 마이크·사진·재생·소켓을 모두 멈추는지.
 import assert from "node:assert";
@@ -315,7 +315,7 @@ const flush = () => new Promise((r) => setImmediate(r));
   console.log("  ⑨ ready 뒤 끊김 → 1초 뒤 resume:true로 재연결, 그 사이 전송 정지, 재개");
 }
 
-// ⑩ ready 뒤 error 메시지도 재연결. 시도 간격 1·2·4·8·15·15…, 90초 실패 뒤에만 onFallback
+// ⑩ ready 뒤 error 메시지도 재연결. 간격 1·2·4·8·15초 뒤 15초 유지, 90초가 지나도 대체하지 않음, close()로 멈춤
 {
   const t = setup();
   const ws = await openReady(t);
@@ -325,7 +325,7 @@ const flush = () => new Promise((r) => setImmediate(r));
   const startedAt = t.timers.now;
   const attemptsAt = [];
   let last = ws;
-  while (t.events.fallback.length === 0 && t.timers.now - startedAt < 200000) {
+  while (t.timers.now - startedAt < 300000) { // 5분 동안 매번 실패시킨다
     t.timers.tick(500);
     if (FakeSocket.last !== last) {
       last = FakeSocket.last;
@@ -336,13 +336,20 @@ const flush = () => new Promise((r) => setImmediate(r));
       await flush();
     }
   }
-  assert.deepEqual(attemptsAt, [1, 3, 7, 15, 30, 45, 60, 75, 90], "1·2·4·8초 뒤로 최대 15초 간격, 90초까지");
-  assert.equal(t.events.fallback.length, 1, "90초가 지나도 못 붙으면 onFallback 한 번");
-  assert.match(t.events.fallback[0], /90s/);
-  assert.equal(t.mic.stopped, 1, "대체되면 마이크를 멈춘다");
-  assert.equal(t.timers.active, 0, "타이머가 남지 않는다");
-  assert.equal(t.conv.sendText("hi"), false, "대체된 뒤 글은 기존 방식으로 가도록 false");
-  console.log("  ⑩ ready 뒤 error → 재연결 9번(1,3,7,15,30,45,60,75,90초), 90초 뒤 onFallback 한 번");
+  assert.deepEqual(attemptsAt.slice(0, 9), [1, 3, 7, 15, 30, 45, 60, 75, 90], "1·2·4·8초 뒤로 15초 간격");
+  const gaps = attemptsAt.slice(4).map((x, i, a) => (i ? x - a[i - 1] : 15));
+  assert.ok(gaps.every((g) => g === 15), "15초 간격을 계속 유지한다");
+  assert.ok(attemptsAt.at(-1) >= 285, `5분 내내 시도한다(마지막 ${attemptsAt.at(-1)}초)`);
+  assert.equal(t.events.fallback.length, 0, "90초가 지나도 onFallback을 부르지 않는다");
+  assert.equal(t.conv.state, "reconnecting");
+  assert.equal(t.conv.sendText("hi"), false, "재연결 중 글은 기존 /api/turn으로 가도록 false");
+  t.conv.close();
+  assert.equal(t.mic.stopped, 1, "close()하면 마이크를 멈춘다");
+  assert.equal(t.timers.active, 0, "close()하면 재연결 타이머가 남지 않는다");
+  const after = FakeSocket.last;
+  t.timers.tick(60000);
+  assert.equal(FakeSocket.last, after, "close() 뒤에는 다시 붙지 않는다");
+  console.log(`  ⑩ ready 뒤 error → 5분간 ${attemptsAt.length}번 재연결(1,3,7,15,30,45… 15초 간격), onFallback 없음, close()로 멈춤`);
 }
 
 // ⑩-2 재연결 중 시도가 ready 없이 멈추면 시도별 시간 초과로 넘어간다
@@ -489,6 +496,36 @@ const flush = () => new Promise((r) => setImmediate(r));
   assert.equal(t.conv.needsTap, false);
   assert.equal(t.conv.state, "listening");
   console.log("  ⑮ 숨김 중 끊김 → 보이면 재연결, resume 실패 시 Tap to resume, ended 마이크 다시 얻기");
+}
+
+// ⑮-2 오래 꺼져 있다가(재연결이 15초 간격으로 기다리는 중) 보이면 기다리지 않고 즉시 재연결, 간격은 1초부터 다시
+{
+  const t = setup();
+  const ws = await openReady(t);
+  await t.conv.setVisible(false);
+  ws.serverClose(1006);
+  let last = ws;
+  for (let i = 0; i < 400; i++) { // 꺼진 채 200초: 시도마다 실패
+    t.timers.tick(500);
+    if (FakeSocket.last !== last) { last = FakeSocket.last; last.serverClose(1006); await flush(); }
+  }
+  assert.equal(t.events.fallback.length, 0, "오래 꺼져 있어도 대체하지 않는다");
+  const before = FakeSocket.last;
+  await t.conv.setVisible(true);
+  assert.notEqual(FakeSocket.last, before, "보이자마자 새 소켓(다음 15초를 기다리지 않는다)");
+  const now1 = FakeSocket.last;
+  now1.serverClose(1006); // 이 시도도 실패하면
+  await flush();
+  t.timers.tick(999);
+  assert.equal(FakeSocket.last, now1, "1초 전에는 다음 시도가 없다");
+  t.timers.tick(1);
+  assert.notEqual(FakeSocket.last, now1, "간격이 1초부터 다시 시작된다");
+  FakeSocket.last.serverOpen();
+  FakeSocket.last.serverSend({ type: "ready", model: "m", resumed: true });
+  await flush();
+  assert.equal(t.conv.state, "listening");
+  assert.equal(t.conv.reconnecting, false);
+  console.log("  ⑮-2 200초 꺼져 있다가 보이면 즉시 재연결, 간격 1초부터 다시, 대체 없음");
 }
 
 // ⑯ 화면 꺼짐 막기(Wake Lock): 요청, 다시 보일 때 재요청, 미지원·거절은 조용히 한 번 안내

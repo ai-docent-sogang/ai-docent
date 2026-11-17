@@ -50,7 +50,7 @@ const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
 // 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.
 // Live가 열리면 Hold to talk 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
 // 처음 연결에 실패하면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다. 도중 끊김·error는
-// live_conversation.js가 90초 동안 스스로 다시 붙고, 그래도 안 될 때만 onFallback으로 버튼 방식이 된다.
+// live_conversation.js가 END VISIT 전까지 스스로 다시 붙는다(버튼 방식으로 바꾸지 않는다. 글라스를 쓰면 누를 화면이 없다).
 // 글라스를 쓰면 폰 화면이 꺼지므로 화면 꺼짐 막기(Wake Lock)를 시도하고, 숨김·다시 보임을 Live에 알린다.
 let live = null;
 let screenNote = false; // Wake Lock을 못 쓰면 "Keep the screen on" 안내를 한 번 보인다

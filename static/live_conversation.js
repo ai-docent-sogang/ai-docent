@@ -17,11 +17,12 @@
 //
 // 실패와 끊김을 나눈다(2026-11-18 수정. 글라스를 쓰면 폰 화면이 꺼져 연결이 자주 끊긴다):
 //   - 처음 open()이 ready까지 가지 못하면 open()이 거절된다 → app.js가 기존 버튼 방식으로 대체.
-//   - ready 뒤의 끊김·error는 대체하지 않고 자동 재연결한다. 1s, 2s, 4s, 8s, 15s, 15s… 끊긴 뒤 90초 동안.
-//     다시 붙을 때 첫 메시지에 "resume": true를 더한다(같은 session_id·profile). 그 사이 마이크·사진은 보내지 않는다.
-//     90초가 지나도 못 붙으면 그때 handlers.onFallback.
+//   - ready 뒤의 끊김·error는 대체하지 않고 자동 재연결한다. 1s, 2s, 4s, 8s, 15s, 이후 15s 간격으로 close()
+//     (END VISIT) 전까지 계속. 글라스를 쓰면 폰 화면이 오래 꺼져 있는 게 정상이고, 그때 버튼 방식으로 바뀌어도
+//     누를 화면이 없다(11/18 결정). 다시 붙을 때 첫 메시지에 "resume": true를 더한다(같은 session_id·profile).
+//     그 사이 마이크·사진은 보내지 않는다.
 //   - 페이지가 숨겨지면(setVisible(false)) 마이크·사진 전송만 멈추고 소켓은 그대로 둔다. 다시 보이면 재개하고,
-//     소켓이 죽었으면 재연결한다. 소리 장치가 멈춰 있으면 resume하고, 안 되면 onNeedsTap(한 번 누르면 resumeAudio()).
+//     소켓이 죽었으면 기다리던 간격을 버리고 바로 재연결한다(간격도 1초부터 다시). 소리 장치가 멈춰 있으면 resume하고, 안 되면 onNeedsTap(한 번 누르면 resumeAudio()).
 //
 // 아이폰 Safari 주의: AudioContext는 사용자가 누른 흐름 안에서, 첫 await 전에 만들어야 한다.
 // 그래서 prime()을 따로 두었다. START EXPLORING 처리의 맨 앞에서 부른다(live_test.js와 같은 이유).
@@ -34,10 +35,9 @@ export const FRAME_MAX_WIDTH = 768;
 export const FRAME_QUALITY = 0.7;
 // ready가 이 시간 안에 오지 않으면 그 연결 시도는 실패로 본다.
 export const OPEN_TIMEOUT_MS = 12000;
-// ready 뒤 끊겼을 때 다시 붙는 간격과 기간.
+// ready 뒤 끊겼을 때 다시 붙는 간격. 기한 없이 END VISIT 전까지 시도한다.
 export const RECONNECT_FIRST_MS = 1000;
 export const RECONNECT_MAX_GAP_MS = 15000;
-export const RECONNECT_WINDOW_MS = 90000;
 // 음소거할 때 보내는 무음 길이. 마이크 조각이 100ms(1600샘플)이므로 6조각.
 export const MUTE_SILENCE_MS = 600;
 const CHUNK_SAMPLES = 1600;
@@ -195,8 +195,9 @@ const STATUS = {
  *
  * handlers: onStatus({state,status,label}), onReady(data), onReconnected(data), onArtwork(data),
  *           onComparison(data), onTurnComplete(), onFallback(reason), onNeedsTap(), onMicStream(stream)
+ *           (onFallback은 지금 부르지 않는다. 대체는 처음 open() 거절뿐이다. 앞으로를 위해 자리만 둔다.)
  *           — 모두 없어도 된다.
- * deps(시험용): WebSocketImpl, player, mic, captureFrame, timers, now, getUserMedia, url,
+ * deps(시험용): WebSocketImpl, player, mic, captureFrame, timers, getUserMedia, url,
  *               frameIntervalMs, openTimeoutMs, doc
  */
 export function createLiveConversation({ handlers = {}, log, video, ...deps } = {}) {
@@ -205,7 +206,6 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
   const mic = deps.mic || createWorkletMic();
   const captureFrame = deps.captureFrame || (() => captureJpegBase64(video));
   const timers = deps.timers || globalThis;
-  const now = deps.now || (() => Date.now());
   const getUserMedia = deps.getUserMedia ||
     ((c) => globalThis.navigator.mediaDevices.getUserMedia(c));
   const frameIntervalMs = deps.frameIntervalMs ?? FRAME_INTERVAL_MS;
@@ -222,9 +222,9 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
   let needsTap = false;
   let serverReconnecting = false; // 서버가 Gemini 세션을 다시 맺는 중(서버의 reconnecting 메시지)
   let linkDown = false; // 폰↔서버 소켓이 끊겨 우리가 다시 붙는 중
-  let downSince = 0;
   let attempt = 0;
   let retryTimer = null;
+  let attemptInFlight = false;
   let frameTimer = null;
   let state = "connecting";
   const stats = { audioChunksSent: 0, silenceChunksSent: 0, framesSent: 0, reconnectAttempts: 0 };
@@ -292,17 +292,10 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
     dropSocket(code);
   }
 
-  function fallback(reason) {
-    if (closed) return;
-    stopAll();
-    handlers.onFallback?.(reason);
-  }
-
   // ── ready 뒤 끊김: 자동 재연결 ──────────────────────────────────────────
   function startReconnect(reason) {
     if (closed || linkDown) return;
     linkDown = true;
-    downSince = now();
     attempt = 0;
     stopFrames();
     player.stop();
@@ -312,12 +305,8 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
     scheduleRetry(reason);
   }
   function scheduleRetry(reason) {
-    const delay = Math.min(RECONNECT_FIRST_MS * 2 ** attempt, RECONNECT_MAX_GAP_MS);
+    const delay = Math.min(RECONNECT_FIRST_MS * 2 ** Math.min(attempt, 10), RECONNECT_MAX_GAP_MS);
     attempt += 1;
-    if (now() + delay - downSince > RECONNECT_WINDOW_MS) {
-      fallback(`Live reconnect failed for ${RECONNECT_WINDOW_MS / 1000}s: ${reason}`);
-      return;
-    }
     retryTimer = timers.setTimeout(() => {
       retryTimer = null;
       tryReconnect(reason);
@@ -326,12 +315,23 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
   async function tryReconnect(reason) {
     if (closed) return;
     stats.reconnectAttempts += 1;
-    const left = RECONNECT_WINDOW_MS - (now() - downSince);
+    attemptInFlight = true;
     try {
-      await connect(true, Math.max(1, Math.min(openTimeoutMs, left)));
+      await connect(true, openTimeoutMs);
     } catch (err) {
-      if (!closed) scheduleRetry(err.message || reason);
+      if (!closed && linkDown && retryTimer === null) scheduleRetry(err.message || reason);
+    } finally {
+      attemptInFlight = false;
     }
+  }
+  // 화면이 다시 보일 때: 기다리던 간격을 버리고 지금 바로 시도한다. 간격도 1초부터 다시.
+  function reconnectNow(reason) {
+    if (closed) return;
+    if (!linkDown) startReconnect(reason);
+    if (retryTimer !== null) timers.clearTimeout(retryTimer);
+    retryTimer = null;
+    attempt = 0;
+    if (!attemptInFlight) tryReconnect(reason);
   }
 
   // 소켓 하나를 열고 ready까지 기다린다. ready 뒤의 끊김은 startReconnect로 넘긴다.
@@ -507,8 +507,9 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
         } catch { /* 권한·장치 문제. 글 질문은 계속 된다. */ }
       }
       if (closed) return;
-      if (!linkDown && (!socket || socket.readyState >= 2)) startReconnect("socket closed while hidden");
-      else if (!linkDown) emit(idleState());
+      const dead = !socket || socket.readyState >= 2;
+      if (linkDown || dead) reconnectNow("socket closed while hidden");
+      else emit(idleState());
     },
 
     /** "Tap to resume" 버튼에서 부른다(사용자 동작 안). */
