@@ -21,6 +21,8 @@ handsfree 모드(11/18, 버튼 없는 대화):
     버튼 신호를 보내지 않는다. 연결 내내 100ms마다 소리를 보낸다(질문 WAV를 실시간 속도로 흘리고,
     그 밖에는 무음). 사진은 3초마다 보낸다. 먼저 Live의 인사 턴을 받고, 그 뒤 WAV마다 한 턴씩 묻는다.
     작품 ID 인자는 받지 않는다(Live가 사진으로 알아본다). --country=France 로 프로필을 줄 수 있다.
+    --resume-after=N: N번째 질문 뒤에 폰 WS를 닫고, 같은 session_id와 "resume": true로 다시 붙어
+    남은 질문을 잇는다(폰 화면 꺼짐·네트워크 끊김 흉내). 닫은 뒤 ready까지 걸린 시간과 resumed를 본다.
 """
 import base64, json, sys, time, wave
 import websockets, asyncio
@@ -28,6 +30,7 @@ import websockets, asyncio
 HANDSFREE = "--handsfree" in sys.argv
 FRAME = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--frame=")), None)
 COUNTRY = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--country=")), "")
+RESUME_AFTER = next((int(a.split("=", 1)[1]) for a in sys.argv if a.startswith("--resume-after=")), 0)
 ARTWORK = None if HANDSFREE else sys.argv[1]
 # WAV를 여러 개 주면 한 연결에서 연달아 묻는다. 한 번만 묻는 시험으로는 11/11에 겪은
 # "두 번째 질문부터 답이 오지 않는" 결함을 잡을 수 없었다. 그래서 여러 턴이 기본이다.
@@ -89,22 +92,45 @@ async def main():
 
 
 async def handsfree():
-    """버튼 없이 계속 소리를 흘리며 묻는다. 말이 끝난 뒤 첫 음성까지의 시간과 함수 결과를 본다."""
+    """버튼 없이 계속 소리를 흘리며 묻는다. --resume-after가 있으면 중간에 끊고 다시 붙는다."""
+    t0 = time.perf_counter()
+    if RESUME_AFTER and 0 < RESUME_AFTER < len(WAVS):
+        parts = [WAVS[:RESUME_AFTER], WAVS[RESUME_AFTER:]]
+    else:
+        parts = [WAVS]
+    session_id, closed_at, turn_no = "", None, 0
+    for i, wavs in enumerate(parts):
+        result = await handsfree_connection(wavs, session_id, resume=i > 0, closed_at=closed_at, turn_no=turn_no)
+        if result is None:
+            return
+        session_id, closed_at = result, time.perf_counter()
+        turn_no += len(wavs)
+        if i + 1 < len(parts):
+            print(f"\n--- 폰 WS를 닫았다(session_id {session_id[:8]}…). 같은 관람으로 다시 붙는다 ---")
+    print(f"\n{len(WAVS)}턴 모두 성공 · 연결 {len(parts)}개 (전체 {time.perf_counter() - t0:.0f}초)")
+
+
+async def handsfree_connection(wavs, session_id, resume, closed_at, turn_no):
+    """연결 하나에서 묻는다. 성공하면 session_id를 돌려준다."""
     frame = open(FRAME, "rb").read() if FRAME else None
     step = 16000 * 2 * 100 // 1000                      # 100ms
     silence = b"\x00\x00" * (step // 2)
     pending = bytearray()                                 # 아직 보내지 않은 질문 소리
     spoken = asyncio.Event()                              # 질문 소리를 다 보냈을 때
     events = asyncio.Queue()                              # 서버에서 받은 것 (도착 시각, 내용)
-    t0 = time.perf_counter()
 
     async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws/live", max_size=None) as ws:
-        await ws.send(json.dumps({"mode": "handsfree", "session_id": "",
-                                  "profile": {"country": COUNTRY, "age_group": "", "language": "en"}}))
+        hello = {"mode": "handsfree", "session_id": session_id,
+                 "profile": {"country": COUNTRY, "age_group": "", "language": "en"}}
+        if resume:
+            hello["resume"] = True
+        await ws.send(json.dumps(hello))
         ready = json.loads(await ws.recv())
         print("서버:", ready)
+        if closed_at is not None:
+            print(f"  (앞 WS를 닫은 뒤 ready까지 {round((time.perf_counter() - closed_at) * 1000)} ms)")
         if ready.get("type") != "ready":
-            return
+            return None
 
         async def mic():
             """폰 마이크처럼 100ms마다 보낸다. 질문이 있으면 질문을, 없으면 무음을."""
@@ -156,8 +182,11 @@ async def handsfree():
             print(f"  [답변] {''.join(said).strip()}")
 
         try:
-            await one_turn("인사(연결 직후, 기준=ready 받은 시각)", time.perf_counter())
-            for turn, path in enumerate(WAVS, 1):
+            if not ready.get("resumed"):
+                # 새 관람이면 인사, 다시 붙었는데 대화를 잃었으면 "돌아왔다"는 한마디가 먼저 온다.
+                await one_turn("인사(연결 직후, 기준=ready 받은 시각)" if not resume
+                               else "대화를 잇지 못함 — 돌아왔다는 말(기준=ready 받은 시각)", time.perf_counter())
+            for turn, path in enumerate(wavs, turn_no + 1):
                 await asyncio.sleep(1.5)                  # 사진이 들어갈 여유(1초 함정) + 사람의 쉼
                 with wave.open(path, "rb") as w:
                     pcm = w.readframes(w.getnframes())
@@ -168,9 +197,10 @@ async def handsfree():
                 await spoken.wait()
                 ended = time.perf_counter() + 0.1        # 마지막 조각이 나간 시각
                 await one_turn(f"턴 {turn} ({seconds:.1f}초 질문, 기준=질문 소리를 다 보낸 시각)", ended)
-            print(f"\n{len(WAVS)}턴 모두 한 연결에서 성공 (전체 {time.perf_counter() - t0:.0f}초)")
+            return ready.get("session_id")
         except asyncio.TimeoutError:
             print("60초 안에 답이 오지 않았다. 자동 음성 감지가 말의 끝을 잡았는지 서버 로그를 본다.")
+            return None
         finally:
             for t in tasks:
                 t.cancel()

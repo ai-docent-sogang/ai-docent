@@ -423,6 +423,91 @@ check("record_turn의 관람객 말에 글 질문 원문이 들어간다",
       any(h == {"visitor": "Who painted this?", "docent": "Kim Hong-do painted it."} for h in visit.history),
       str(visit.history))
 
+# ── 16~20. 폰이 다시 붙을 때(resume, 11/18 오후) ─────────────────────────
+print("16. resume: 저장된 핸들로 대화를 잇는다")
+visit = sessions.create_session()
+SID = visit.session_id
+got, fake = run([[[msg(handle="hA")],
+                  [msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])],
+                  [msg(said="Kim Hong-do.", turn_complete=True)]]],
+                expect=4, first={"mode": "handsfree", "session_id": SID}, linger=0.3)
+check("첫 연결은 resumed를 담지 않는다(새 관람)", "resumed" not in got[0], str(got[0]))
+check("폰 WS가 끊겨도 핸들과 작품이 남는다",
+      relay.resume_store.get(SID, {}).get("handle") == "hA"
+      and relay.resume_store[SID]["artwork_id"] == ARTWORK, str(relay.resume_store.get(SID)))
+got, fake = run([[[msg(said="Yes, you asked who painted it.", turn_complete=True)]]],
+                expect=3, first={"mode": "handsfree", "session_id": SID, "resume": True})
+check("저장된 핸들로 Gemini에 붙는다", fake.handles[0] == "hA", str(fake.handles))
+check("ready.resumed=true", got[0].get("type") == "ready" and got[0].get("resumed") is True, str(got[0]))
+check("이어 붙으면 인사 신호를 보내지 않는다", fake.session.client_content == [],
+      str(fake.session.client_content))
+check("같은 관람 세션에 이어 쓴다", got[0]["session_id"] == SID)
+
+print("17. resume: 저장된 핸들이 없으면 새 대화(resumed=false), 인사 대신 돌아왔다고 말한다")
+fresh = sessions.create_session()
+got, fake = run([[[msg(said="I'm back.", turn_complete=True)]]],
+                expect=3, first={"mode": "handsfree", "session_id": fresh.session_id, "resume": True})
+cue = fake.session.client_content[0]["turns"].parts[0].text if fake.session.client_content else ""
+check("핸들 없이 붙는다", fake.handles[0] is None, str(fake.handles))
+check("ready.resumed=false", got[0].get("resumed") is False, str(got[0]))
+check("처음 인사가 아니라 다시 연결됐다는 신호를 보낸다",
+      cue.startswith(relay.RECONNECT_CUE) and relay.GREETING_CUE not in cue, cue[:80])
+
+print("18. resume: 2시간 지난 핸들은 버리고, 저장된 작품 사실을 넘긴다")
+relay.resume_store[SID]["updated"] -= relay.HANDLE_TTL_S + 1
+relay.resume_store[SID]["handle"] = "hOld"
+got, fake = run([[[msg(said="I'm back.", turn_complete=True)]]],
+                expect=3, first={"mode": "handsfree", "session_id": SID, "resume": True})
+check("2시간 지난 핸들로 붙지 않는다", fake.handles[0] is None, str(fake.handles))
+check("만료된 항목은 저장소에서 지운다", relay.resume_store.get(SID, {}).get("handle") != "hOld",
+      str(relay.resume_store.get(SID)))
+check("ready.resumed=false", got[0].get("resumed") is False, str(got[0]))
+check("만료 뒤에는 작품도 이어받지 않는다(2시간 넘은 관람)",
+      "FACTS" not in (fake.session.client_content[0]["turns"].parts[0].text if fake.session.client_content else ""))
+
+print("19. resume: 핸들이 거부되면 기존 연달아 실패 처리로 새 대화")
+v = sessions.create_session()
+relay.resume_store[v.session_id] = {"handle": "hBad", "artwork_id": ARTWORK, "updated": time.time()}
+got, fake = run([rejected, rejected, rejected, [[msg(said="I'm back.", turn_complete=True)]]],
+                expect=3, first={"mode": "handsfree", "session_id": v.session_id, "resume": True})
+cue = fake.session.client_content[0]["turns"].parts[0].text if fake.session.client_content else ""
+check("핸들로 세 번 시도 뒤 핸들 없이 붙는다",
+      fake.handles == ["hBad", "hBad", "hBad", None], str(fake.handles))
+check("ready 전에는 reconnecting을 보내지 않는다", types_of(got)[0] == "ready", str(types_of(got)))
+check("ready.resumed=false", got[0].get("resumed") is False, str(got[0]))
+check("저장된 작품의 사실을 넘겨 이어 말하게 한다", ARTWORK in cue and "FACTS" in cue, cue[:120])
+
+print("20. 같은 session_id로 WS가 둘 붙으면 앞의 것을 닫는다")
+v = sessions.create_session()
+fake = FakeClient([[[msg(said="one", turn_complete=True)]], [[msg(said="two", turn_complete=True)]]])
+relay.make_client = lambda: fake
+closed = {}
+with TestClient(server_app) as c:
+    with c.websocket_connect("/ws/live") as ws1:
+        ws1.send_text(json.dumps({"mode": "handsfree", "session_id": v.session_id}))
+        first1 = json.loads(ws1.receive_text())
+
+        def watch():
+            try:
+                while True:
+                    m = ws1.receive()
+                    if m.get("type") == "websocket.close":
+                        closed["code"] = m.get("code")
+                        return
+            except Exception as e:
+                closed["exc"] = repr(e)
+
+        th = threading.Thread(target=watch, daemon=True)
+        th.start()
+        with c.websocket_connect("/ws/live") as ws2:
+            ws2.send_text(json.dumps({"mode": "handsfree", "session_id": v.session_id, "resume": True}))
+            first2 = json.loads(ws2.receive_text())
+            th.join(5)
+            ws2.close()
+check("둘째 연결은 ready를 받는다", first2.get("type") == "ready", str(first2))
+check("앞 연결은 닫힌다", closed.get("code") == 4000 or "exc" in closed, str(closed))
+check("지금 연결 목록에서 정리된다", v.session_id not in relay.active_connections)
+
 print()
 if failures:
     print(f"실패 {len(failures)}건: {failures}")

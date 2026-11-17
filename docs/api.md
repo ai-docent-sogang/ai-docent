@@ -103,6 +103,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | 언제 | 보내는 것 | 형식 |
 | --- | --- | --- |
 | 연결 직후 1회 (handsfree) | 모드, 이어 쓸 관람 세션, 관람객 프로필 | 텍스트 `{"mode": "handsfree", "session_id": "<POST /api/session 값>", "profile": {"country": "", "age_group": "", "language": "en"}}` — `artwork_id`는 없습니다 |
+| 다시 붙을 때 1회 (handsfree) | 폰 화면 꺼짐·네트워크 끊김 뒤 같은 관람으로 | 위와 같고 `"resume": true`를 더합니다. `session_id`는 앞 연결의 `ready`에서 받은 값 |
 | 연결 직후 1회 (push) | 어느 작품인지, 프로필, 관람 세션 | 텍스트 `{"artwork_id": "KHD_SSIREUM", "profile": {...}, "session_id": "..."}` |
 | 대화하는 내내 (handsfree) | 마이크 소리. **말이 없을 때도 계속** | 바이너리, 16kHz 모노 PCM16 |
 | 3초마다 (handsfree) | 카메라 사진 | 텍스트 `{"type": "frame", "jpeg": "<base64, 가로 최대 768px, 화질 0.7>"}` |
@@ -113,7 +114,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 
 | 받는 것 | 형식 | 폰이 할 일 |
 | --- | --- | --- |
-| 준비됨 | `{"type": "ready", "model": "...", "mode": "handsfree", "voice": "Kore", "session_id": "..."}` (push는 `"artwork_title"`도 옵니다) | 대화 시작 표시. `session_id`를 관람 요약에 씁니다 |
+| 준비됨 | `{"type": "ready", "model": "...", "mode": "handsfree", "voice": "Kore", "session_id": "..."}` (push는 `"artwork_title"`도 옵니다. `"resume": true`로 붙었을 때만 `"resumed": true/false`가 옵니다) | 대화 시작 표시. `session_id`를 관람 요약에 씁니다 |
 | 받아쓴 질문 | `{"type": "heard", "text": "..."}` (조각으로 여러 번) | 관람객 말풍선에 이어 붙임. **마이크로 들은 말만** 옵니다. handsfree 글 질문(`{"type":"text"}`)에는 보내지 않습니다(화면이 직접 그립니다) |
 | 답변 음성 | 바이너리, 24kHz 모노 PCM16 | 이어 붙여 재생 |
 | 답변 자막 | `{"type": "said", "text": "..."}` (조각) | 도슨트 말풍선에 이어 붙임 |
@@ -126,6 +127,14 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | 오류 | `{"type": "error", "message": "..."}` | 안내 문구. AIVY 화면은 기존 `/api/turn` 버튼 방식으로 되돌아갑니다 |
 
 `profile`과 `session_id`는 없어도 됩니다. `profile`은 FE2 초기 설정값 세 필드이고(없으면 영어·성인으로 말합니다), **세션 중간에 바꾸지 않습니다**(11/17 BE1 결정). `session_id`는 `POST /api/session`에서 받은 값입니다. 보내지 않거나 서버를 다시 켜서 없어진 ID면 서버가 새로 만들어 `ready`에 담아 돌려줍니다. `kept_conversation`이 거짓이면 앞 대화가 이어지지 않으므로 폰은 안내 문구를 바꿉니다.
+
+다시 붙기(`"resume": true`, 11/18 오후): 서버는 `session_id`별로 Gemini 재개 핸들과 지금 작품을 메모리에 남겨 둡니다(폰 WS가 끊겨도 지우지 않고, 마지막 갱신 뒤 2시간이 지나면 버립니다. 공식 문서상 핸들 유효 시간). 폰이 같은 `session_id`와 `"resume": true`로 다시 붙으면:
+
+- 핸들로 Gemini 대화를 이으면 `ready.resumed = true`이고, Live는 인사하지 않습니다. 앞 대화를 기억합니다.
+- 핸들이 없거나 2시간이 지났거나 거부되면(재시도 3번 뒤) 새 대화로 시작하고 `ready.resumed = false`입니다. 이때 Live는 처음 인사 대신 "다시 연결됐다"고 한 문장만 말하고, 저장된 작품이 있으면 그 작품의 사실로 이어 말합니다(카메라가 다른 작품을 보이면 함수로 바뀝니다).
+- 핸들로 다시 붙는 데 실패해 재시도하는 동안에는 `ready` 전이므로 `reconnecting`을 보내지 않습니다. 실제 Gemini에서 끊은 뒤 `ready`까지 약 2초였습니다.
+- 같은 `session_id`로 WS가 이미 붙어 있으면 앞 연결을 닫습니다(닫힘 코드 4000).
+- 서버를 다시 켜면 저장한 핸들은 사라집니다.
 
 `voice`는 Live 목소리 이름입니다. 서버의 환경 변수 `LIVE_VOICE`로 고르고, 없으면 `Kore`입니다(11/13 팀 규칙). 두 모드가 같은 목소리를 씁니다.
 
