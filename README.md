@@ -11,29 +11,54 @@
 
 ```text
 ai-docent/  (저장소 최상위)
-├── docs/        개발계획서, 역할 가이드, API 약속(api.md), 시연 체크리스트
+├── AGENTS.md, CLAUDE.md   팀 공통 작업 지침, AI 코딩 도구용 안내
+├── .env.example           .env 견본 (실제 .env는 git 제외)
+├── docs/
+│   ├── 개발계획서.md, 역할_가이드.md, 진행상황.md, 시연_체크리스트.md
+│   ├── api.md             서버와 앱이 주고받는 형식 (BE1·FE1)
+│   ├── 11-18_통합_인터페이스.md   11/18 전달본에서 각자 내보내는 형식
+│   ├── meeting/           회의록, 작업 안내, 요청 문서
+│   ├── FE1_*.md           FE1 측정·검토 기록 (음성, 응답 시간, Live, 아이폰 시험, 관람 분석)
+│   └── examples/          모의 데이터 예시
 ├── server/      Python 서버
 │   ├── app.py            API 주소와 요청 처리 (BE1)
+│   ├── ask.py            텍스트 질문·답변 API /api/ask (BE1)
 │   ├── prompts.py        도슨트 지시문과 첫 인사 (BE1, 말투는 FE3 제안)
 │   ├── gemini_client.py  Gemini 호출과 답의 모양 (BE1)
 │   ├── session.py        관람 세션 기억 (BE1)
 │   ├── content.py        콘텐츠 CSV 읽기와 비교 순서 (BE2)
-│   ├── logs.py           응답 시간·인식 기록 (BE2, 구현 예정)
-│   └── recognition.py    사진으로 작품 후보 찾기 (BE2, 서버 연결 전)
-├── static/      폰 웹앱 (FE1)
-│   ├── index.html, style.css  화면과 모양
-│   ├── app.js            화면 흐름
-│   ├── audio.js          녹음 WAV 변환, 음성 출력
-│   └── api.js            서버 요청 (글라스 앱이 따를 형식)
+│   ├── recognition.py    사진으로 작품 후보 찾기 (BE2, 서버 연결 전)
+│   └── logs.py           응답 시간·인식 기록 자리 (BE2, 아직 구현 안 됨)
+├── static/      폰 웹앱
+│   ├── index.html, style.css, app.js
+│   │                     AIVY 화면과 흐름 (FE2. FE1의 세션·카메라·녹음 흐름을 그대로 씀)
+│   ├── api.js            서버 요청 (FE1, 글라스 앱이 따를 형식)
+│   ├── audio.js          녹음 WAV 변환, 음성 출력 (FE1)
+│   ├── config.js         서버 주소와 시험용 작품 목록 (FE1)
+│   ├── stt.js            브라우저 음성 인식 (FE1, 화면에는 아직 연결 안 됨)
+│   └── live_test.html, live_test.js, live_mic_worklet.js, live_player.js
+│                         Live 음성 시험 페이지 (FE1, tools/live_relay_spike.py가 /live로 내려줌)
 ├── glasses/     글라스 앱과 조사 기록 (FE2)
 ├── data/        콘텐츠 (FE3)
-│   ├── artworks.csv, comparisons.csv
+│   ├── artworks.csv, comparisons.csv, comparison_extended.csv
 │   ├── scenarios/        대화 시나리오
-│   ├── eval/             평가 질문 세트
+│   ├── eval/             평가 질문 세트와 측정 결과 (data/eval/README.md)
 │   ├── reference/        기준 이미지 목록표와 벡터 (BE2, data/reference/README.md)
 │   ├── kb/               e뮤지엄 해설 DB
 │   └── incoming/         Drive에서 받은 원본 이미지·해설 (git 제외)
-└── tools/       검사·측정·DB 만들기 도구 (BE2)
+├── tools/       검사·측정·DB 만들기 도구 (담당은 파일마다 다름)
+│   ├── build_manifest.py, build_index.py, emuseum_page.py, make_answer_sheet.py
+│   │                     이미지 목록표·벡터·인식 정답표 (BE2)
+│   ├── check_content.py, eval_recognition.py
+│   │                     CSV 검사·인식 정답률 도구 자리 (BE2, 아직 구현 안 됨)
+│   ├── compare_modes.py  요청-응답 vs Live 비교 실험 (BE1)
+│   ├── live_relay_spike.py, fake_browser_live.py, probe_live_audio.py
+│   │                     Live 중계 시험대(포트 8013)와 측정 (FE1)
+│   └── live_frame_recognition.py, classify_questions.py, make_visit_analytics_mock_report.py
+│                         관람 분석 측정 (FE1)
+├── tests/       시험 (FE1). 실행 방법은 각 파일 맨 위 주석
+├── experiments/voice/    음성 비교 실험 코드와 기록 (FE1)
+└── .github/rulesets/     main 브랜치 보호 규칙
 ```
 
 각 파일 맨 위 주석에 담당, 하는 일, 같이 보는 파일이 적혀 있습니다.
