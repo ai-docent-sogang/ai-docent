@@ -1,11 +1,17 @@
-# AI 도슨트 v0 (11/4 스마트폰 시연)
+# AI 도슨트 (AIVY)
 
-아이폰 Safari에서 카메라로 그림을 비추고 버튼을 누른 채 영어로 말하면, 노트북 서버가 음성과 카메라 프레임을 Gemini에 보냅니다. 도슨트는 작품을 인식하고, 관람객 프로필에 맞춘 비교 설명을 영어 음성으로 답합니다. 계획 전체는 [개발계획서](docs/개발계획서.md), 팀원별 할 일은 [역할 가이드](docs/역할_가이드.md), 서버와 앱이 주고받는 형식은 [API 약속](docs/api.md)을 참고하세요.
+외국인 관람객이 국립중앙박물관 조선 회화 앞에서 폰 카메라로 그림을 비추고 영어로 물으면, 도슨트가 작품을 알아보고 관람객이 아는 외국 그림과 비교해 답하는 폰 웹앱입니다. 2026-11-18 멘토 전달본과 12/1 시연(서화실 촬영)을 준비하고 있습니다.
 
-- 방식: 요청-응답(계획서 4장 B안). 녹음된 음성을 Gemini에 직접 넣어 받아쓰기와 답변을 한 번에 받고, 음성 출력은 브라우저 `speechSynthesis`(en-US)로 합니다.
-- 작품 인식: 카메라 프레임과 작품 목록을 함께 보내 Gemini가 고릅니다(계획서 5장 1안). 확신이 없으면 `unknown`을 반환하고 관람객에게 다시 묻습니다.
-- 개인화: 첫 인사에서 출신 국가와 익숙한 미술을 묻고, 답에서 프로필을 추출합니다. 서버가 프로필 태그로 비교 작품 순서를 정하고 이미 소개한 비교는 뒤로 보냅니다.
-- 저장하지 않는 것: 녹음, 카메라 프레임, 세션. 세션은 서버 메모리에만 있다가 서버를 끄면 사라집니다.
+계획 전체는 [개발계획서](docs/개발계획서.md), 팀원별 할 일은 [역할 가이드](docs/역할_가이드.md), 지금 어디까지 했는지는 [진행 상황](docs/진행상황.md), 서버와 앱이 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
+
+## 지금 상태 (2026-11-18, main 기준)
+
+- **화면**: AIVY(FE2). 관람 시작 → 카메라로 그림 비추기 → Hold to talk로 말하거나 글로 질문 → 인식된 작품 상세 → My visit 요약 → 관람 종료.
+- **대화 방식**: 요청-응답(`POST /api/turn`). 녹음(16kHz WAV)·사진·글을 Gemini에 한 번에 보내 받아쓰기, 작품 판단, 답변을 받고, 답은 브라우저 `speechSynthesis`(en-US)로 읽어 줍니다.
+- **Live 실시간 음성**: 11/11 회의에서 본선으로 정했습니다. 중계는 아직 `tools/live_relay_spike.py` 시험대(포트 8013, `/live` 시험 페이지)에 있고, 운영 서버(`server/app.py`)에 붙이는 작업은 진행 중입니다(main에 아직 없음).
+- **작품 인식**: 사진과 작품 목록을 함께 보내 Gemini가 고릅니다(계획서 5장 1안). 확신이 없으면 `unknown`을 돌려줍니다. 기준 이미지 검색 방식(`server/recognition.py`, BE2)은 아직 서버에 연결 전입니다.
+- **개인화**: 첫 인사에서 출신 국가와 익숙한 미술을 묻고, 대화에서 프로필을 뽑아 비교 작품 순서를 정합니다. 화면의 지역·연령 선택은 아직 서버로 가지 않습니다.
+- **저장하지 않는 것**: 녹음, 카메라 사진, 세션. 세션은 서버 메모리에만 있다가 서버를 끄면 사라집니다.
 
 ## 폴더 구조와 담당
 
@@ -18,8 +24,7 @@ ai-docent/  (저장소 최상위)
 │   ├── api.md             서버와 앱이 주고받는 형식 (BE1·FE1)
 │   ├── 11-18_통합_인터페이스.md   11/18 전달본에서 각자 내보내는 형식
 │   ├── meeting/           회의록, 작업 안내, 요청 문서
-│   ├── FE1_*.md           FE1 측정·검토 기록 (음성, 응답 시간, Live, 아이폰 시험, 관람 분석)
-│   └── examples/          모의 데이터 예시
+│   └── FE1/               FE1 측정·검토 기록 (음성, 응답 시간, Live, 아이폰 시험, 관람 분석과 모의 데이터)
 ├── server/      Python 서버
 │   ├── app.py            API 주소와 요청 처리 (BE1)
 │   ├── ask.py            텍스트 질문·답변 API /api/ask (BE1)
@@ -81,6 +86,12 @@ cp .env.example .env
 uv run python -m server.gemini_client --list-models
 ```
 
+Live 시험대를 쓰려면 WebSocket 패키지를 함께 설치합니다.
+
+```bash
+uv sync --extra live
+```
+
 ## 실행
 
 ```bash
@@ -105,26 +116,45 @@ mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout cer
 uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem
 ```
 
+**Live 시험대**: 운영 서버와 별개로 포트 8013에 띄웁니다. 터널도 8013으로 걸고 아이폰에서 `/live`를 엽니다. 시험 절차는 [아이폰 시험](docs/FE1/FE1_아이폰_시험.md)에 있습니다.
+
+```bash
+PYTHONPATH=. uv run uvicorn --app-dir tools live_relay_spike:app --port 8013
+```
+
+## 시험
+
+```bash
+node tests/test_ask.mjs
+node tests/test_stt.mjs
+node tests/test_live_mic.mjs
+node tests/test_live_player.mjs
+PYTHONPATH=. uv run python tests/test_live_session_lifetime.py
+```
+
+서버나 Gemini 없이 돌아갑니다. 콘텐츠 CSV 검사 도구(`tools/check_content.py`)는 아직 구현되지 않았습니다. CSV를 고친 뒤에는 서버를 다시 켜서 직접 확인합니다.
+
 ## 시연 순서
 
 1. 아이폰에 이어폰을 연결하고 무음 모드를 끕니다. 무음 모드에서는 음성이 나오지 않을 수 있습니다.
-2. **Start**를 누르고 카메라·마이크 접근을 허용합니다. 도슨트가 인사하며 출신 국가를 묻습니다.
-3. 빨간 버튼을 누른 채 답합니다. 예: "I'm from France and I love Impressionism."
+2. 첫 화면에서 지역과 연령대를 고르고 **START EXPLORING**을 누른 뒤 카메라·마이크 접근을 허용합니다. 도슨트가 인사하며 어디서 왔는지, 어떤 미술을 좋아하는지 묻습니다.
+3. **Hold to talk**를 누른 채 답합니다. 예: "I'm from France and I love Impressionism."
 4. 모니터나 인쇄물의 작품을 비추고 버튼을 누른 채 질문합니다. 예: "What am I looking at?", "Can you compare it with something I know?"
-5. 화면 하단에서 인식된 작품, 사용된 비교, 프로필, 응답 시간(Gemini / 전체)을 확인합니다. 응답 시간은 계획서의 방식 비교에 기록합니다.
+5. 작품을 알아보면 카메라 위에 **ARTWORK RECOGNIZED** 칩이 뜹니다. 누르면 작품 상세와 쓰인 비교 작품이 나옵니다.
+6. 오른쪽 위 **My visit**에서 이번 관람에서 본 작품과 비교 수를 보고, **END VISIT**으로 관람을 끝냅니다. 서버의 세션도 함께 지워집니다.
 
-말하기가 어려운 환경에서는 입력창에 질문을 입력해도 됩니다.
+말하기가 어려운 환경에서는 입력창에 질문을 입력해도 됩니다. 카메라가 작품이 아닌 곳을 비추고 있으면 작품 이름을 말해도 `unknown`이 나올 수 있으니, 질문할 때는 그림을 비춥니다.
 
 ## 콘텐츠
 
 시연 작품은 `data/artworks.csv`, 비교 작품은 `data/comparisons.csv`에 있습니다.
 
-| ID | 작품 (국립중앙박물관 소장품번호) | 비교 작품 (✓ = 검증) |
+| ID | 작품 (국립중앙박물관 소장품번호) | 비교 작품 |
 | --- | --- | --- |
-| `JS_INWANG` | 정선, 인왕제색도 (건희 1) | 세잔 「생트빅투아르 산」(Met) ✓ / 호쿠사이 「개풍쾌청(적부)」(Met) ✓ |
-| `KHD_SSIREUM` | 김홍도, 씨름 《단원 풍속도첩》 (본관 6504-22) | 브뤼헐 「농민의 결혼식」(KHM) ✓ / 호쿠사이 망가(Met, 문장 미검증) |
-| `KHD_SEODANG` | 김홍도, 서당 《단원 풍속도첩》 (본관 6504-23) | 브뤼헐 「아이들의 놀이」(KHM) ✓ |
-| `KSH_SELF` | 강세황 초상 자필본 (구 10562) | 렘브란트 「63세의 자화상」(내셔널갤러리) ✓ / 뒤러 자화상(1500, 미검증) |
+| `JS_INWANG` | 정선, 인왕제색도 (건희 1) | 세잔 「생트빅투아르 산」(Met) / 호쿠사이 「개풍쾌청」(Met) |
+| `KHD_SSIREUM` | 김홍도, 씨름 《단원 풍속도첩》 (본관 6504-22) | 브뤼헐 「농민의 결혼식」(KHM) / 호쿠사이 망가(Met) |
+| `KHD_SEODANG` | 김홍도, 서당 《단원 풍속도첩》 (본관 6504-23) | 브뤼헐 「아이들의 놀이」(KHM) |
+| `KSH_SELF` | 강세황 초상 자필본 (구 10562) | 렘브란트 「63세의 자화상」(내셔널갤러리) / 뒤러 「모피 옷을 입은 자화상」(바이에른 주립회화컬렉션) |
 | `KJH_SEHAN` | 김정희, 세한도 (증 10000) | 없음 |
 | `LIM_GANGSAN` | 이인문, 강산무진도 (덕수 927) | 없음 |
 | `KHD_CHUSEONG` | 김홍도, 추성부도 (건희 16) | 없음 |
@@ -133,8 +163,10 @@ uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key
 | `LA_DOGS` | 이암, 어미개와 강아지 (본관 255) | 없음 |
 | `SSD_CHOCHUNG` | 전 신사임당, 초충도 (신수 3550) | 없음 |
 
-`artworks.csv`의 `key_facts`는 2026-10-31에 e뮤지엄 작품 페이지(`official_url`)의 기본정보와 해설에서만 옮겼습니다(`verification_status=page_verified`). 이전 초안 가운데 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고, 서버는 이 열을 읽지 않습니다. 조선 회화실 실제 전시 여부(`on_view_status`)는 아직 확인하지 않았습니다. 시연 전에 현장과 박물관 공식 사이트에서 확인하고, 전시되지 않은 작품은 빼세요.
+작품 11점과 비교쌍 7건은 모두 FE3 검토를 거쳐 `verification_status=verified`입니다(`checked_at` 2026-11-09). 작품 사실(`key_facts`)은 e뮤지엄 작품 페이지(`official_url`)에서, 비교쌍의 유사점·차이점은 양쪽 작품의 공식 소장품 기록에서 옮겼습니다. 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고 서버는 이 열을 읽지 않습니다.
 
-`comparisons.csv`의 `verified` 비교쌍은 2026-10-31에 양쪽 작품의 공식 소장품 기록(e뮤지엄, Met Collection API, KHM, 내셔널갤러리)에 있는 내용만으로 유사점·차이점을 다시 썼습니다(`checked_at`). `unverified` 2건(호쿠사이 망가, 뒤러)은 근거를 확인하지 못했습니다. 서버는 아직 `verification_status`로 거르지 않으므로, 시연 전에 미검증 행을 빼거나 확인하세요. 도슨트는 CSV에 있는 내용만 말하도록 지시되어 있으므로, CSV의 오류는 그대로 음성으로 전달됩니다.
+- **서화실 실제 전시 여부(`on_view_status`)는 11점 모두 아직 "확인 필요"입니다.** 시연 전에 현장과 박물관 공식 사이트에서 확인하고, 전시되지 않은 작품은 뺍니다.
+- 서버는 아직 `verification_status`로 거르지 않습니다(`server/content.py`). 지금은 모두 verified지만, 검증 안 된 행이 생기면 시연 전에 빼야 합니다.
+- 도슨트는 CSV에 있는 내용만 말하도록 지시되어 있으므로, CSV의 오류는 그대로 음성으로 전달됩니다.
 
 `key_facts`, `similarities`, `differences`는 `|`로, `profile_tags`는 `;`로 구분합니다. 작품을 추가하면 서버를 다시 시작합니다.
