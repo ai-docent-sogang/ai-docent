@@ -52,7 +52,7 @@ const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
 // 처음 연결에 실패하면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다. 도중 끊김·error는
 // live_conversation.js가 END VISIT 전까지 스스로 다시 붙는다(버튼 방식으로 바꾸지 않는다. 글라스를 쓰면 누를 화면이 없다).
 // 글라스를 쓰면 폰 화면이 꺼지므로 화면 꺼짐 막기(Wake Lock)를 시도하고, 숨김·다시 보임을 Live에 알린다.
-// 아이폰은 잠금 해제 뒤 페이지를 새로 불러온다. 그래서 Live 관람의 식별자만 sessionStorage에 두고
+// iOS는 오래 백그라운드에 있던 탭을 메모리 때문에 새로 불러올 수 있다(11/18 실기기 20초 잠금에서는 연결이 그대로 유지됐다). 대비해서 Live 관람의 식별자만 sessionStorage에 두고
 // (대화·사진·음성은 저장하지 않는다), 새로 뜨면 "Tap to continue your visit"로 같은 관람을 잇는다.
 let live = null;
 const visitStore = createVisitStore();

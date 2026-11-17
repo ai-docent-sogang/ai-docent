@@ -27,7 +27,7 @@
 // 살아 있음 알림: ready 뒤 5초마다 {"type":"ping"}을 보낸다(숨김 중에도 소켓이 열려 있으면). 서버는 30초 동안
 // 폰에서 아무것도 못 받으면 연결을 닫는다(T1). 닫히면 위의 재연결이 잇는다.
 //
-// 새로고침 뒤 관람 잇기(11/18, 아이폰은 잠금 해제 뒤 페이지를 새로 불러온다): createVisitStore()가 sessionStorage에
+// 새로고침 뒤 관람 잇기(11/18, iOS가 오래 숨겨진 탭을 새로 불러올 때를 대비. 20초 잠금에서는 새로고침 없이 연결이 유지됐다): createVisitStore()가 sessionStorage에
 // {session_id, profile, started_at}만 저장한다(대화·사진·음성은 저장하지 않는다 — AGENTS.md). 페이지가 다시 뜨면
 // continueSavedVisit()이 같은 session_id로 resume:true 연결을 연다(/api/session을 새로 만들지 않는다).
 //
