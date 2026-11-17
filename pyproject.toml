@@ -12,6 +12,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Live API 시험(tools/probe_live_audio.py, tools/live_relay_spike.py)에만 필요. 설치: uv sync --extra live
+# uvicorn은 WebSocket을 쓸 때 이 패키지가 있어야 한다. 아직 시험용이라 기본 설치에 넣지 않았다.
+live = [
+    "websockets>=16.1",
+]
 # 이미지로 작품 찾기(server/recognition.py, tools/build_index.py)에만 필요. 설치: uv sync --extra recognition
 recognition = [
     "numpy>=1.26",
