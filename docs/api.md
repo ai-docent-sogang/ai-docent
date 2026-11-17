@@ -83,9 +83,11 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 임시 답변 모드: `.env`에 `ASK_MOCK=1`을 넣고 서버를 다시 켜면 Gemini 없이 `status: "mock"` 답변을 돌려줍니다.
 
-## WS `/ws/live` — 실시간 음성 (Gemini Live API, 11/17 제안)
+## WS `/ws/live` — 실시간 음성 (Gemini Live API, 11/17 추가)
 
-**지금 상태: 제안입니다. 이 경로는 아직 `server/app.py`에 없습니다.** 동작하는 코드는 `tools/live_relay_spike.py`의 스파이크뿐입니다(FE1, 아이폰 Safari 왕복 확인). 이 절은 BE1 리뷰를 받기 위해 형식을 먼저 적어 둔 것이고, **BE1이 승인하기 전까지 운영 서버는 건드리지 않습니다.**
+담당: 중계는 FE1(`server/live.py`), 지시문은 BE1(`server/live_context.py`). 경로는 11/17에 BE1과 합의했습니다.
+
+`tools/live_relay_spike.py`는 운영 서버를 켜지 않고 중계만 띄우는 시험 서버이고, 같은 코드를 씁니다.
 
 AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 폰이 Gemini Live에 직접 붙을 수 없고, 서버가 가운데서 음성을 중계합니다. 연결은 WebSocket 하나이고, 텍스트 메시지(JSON)와 바이너리 메시지(생 PCM)를 섞어서 주고받습니다.
 
@@ -93,7 +95,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 
 | 순서 | 보내는 것 | 형식 |
 | --- | --- | --- |
-| 연결 직후 1회 | 어느 작품인지 | 텍스트 `{"artwork_id": "KHD_SSIREUM"}` |
+| 연결 직후 1회 | 어느 작품인지, 관람객 프로필, 이어 쓸 관람 세션 | 텍스트 `{"artwork_id": "KHD_SSIREUM", "profile": {"country": "France", "age_group": "adult", "language": "en"}, "session_id": "..."}` |
 | 버튼 누름 | 말 시작 | 텍스트 `{"type": "speech_start"}` |
 | 누르고 있는 동안 | 마이크 소리 | 바이너리, 16kHz 모노 PCM16 |
 | 버튼 뗌 | 말 끝 | 텍스트 `{"type": "speech_end"}` |
@@ -102,7 +104,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 
 | 받는 것 | 형식 | 폰이 할 일 |
 | --- | --- | --- |
-| 준비됨 | `{"type": "ready", "model": "...", "artwork_title": "..."}` | 버튼 활성화 |
+| 준비됨 | `{"type": "ready", "model": "...", "artwork_title": "...", "session_id": "..."}` | 버튼 활성화. `session_id`를 관람 요약에 씁니다 |
 | 받아쓴 질문 | `{"type": "heard", "text": "..."}` | 화면에 질문 표시 |
 | 답변 음성 | 바이너리, 24kHz 모노 PCM16 | 이어 붙여 재생 |
 | 답변 자막 | `{"type": "said", "text": "..."}` | 화면에 답 표시 |
@@ -110,6 +112,8 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | 재연결 중 | `{"type": "reconnecting", "kept_conversation": true/false}` | "잠시만요" 안내, 버튼 잠금 |
 | 다시 붙음 | `{"type": "reconnected", "kept_conversation": true/false}` | 버튼 활성화 |
 | 오류 | `{"type": "error", "message": "..."}` | 안내 문구 표시 |
+
+`profile`과 `session_id`는 없어도 됩니다. `profile`은 FE2 초기 설정값 세 필드이고(없으면 영어·성인으로 말합니다), **세션 중간에 바꾸지 않습니다**(11/17 BE1 결정). `session_id`는 `POST /api/session`에서 받은 값입니다. 보내지 않거나 서버를 다시 켜서 없어진 ID면 서버가 새로 만들어 `ready`에 담아 돌려줍니다.
 
 `kept_conversation`이 거짓이면 앞 대화가 이어지지 않으므로 폰은 안내 문구를 바꿉니다.
 
@@ -125,8 +129,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | 없는 것 | 지금 상태 |
 | --- | --- |
 | 작품 변경 | 연결 직후 `artwork_id`를 한 번 받고 고정합니다. 관람객이 다른 작품으로 옮기는 방법은 정하지 않았습니다 |
-| 세션 기억 연동 | 중계가 `server/session.py`를 쓰지 않습니다. 그래서 FE2 요약 화면(본 작품 수, 비교 수)이 빕니다 |
-| 비교 설명 | 지시문으로 `ASK_INSTRUCTION`(작품 한 점)을 써서 `data/comparisons.csv`의 비교쌍을 쓰지 않습니다. 지금 그대로 서버에 넣으면 "외국 작품과 비교"가 빠집니다 |
+| 비교쌍 사용 기록 | 턴이 끝나면 `session.record_turn`으로 본 작품과 대화를 남기지만, `comparison_id`는 빈 값입니다. Live는 음성으로 답해서 어떤 비교를 썼는지 구조화된 값으로 알 수 없습니다(`/api/turn`은 받습니다). 그래서 요약 화면의 **비교 수는 Live 경로에서 0**입니다. 함수 호출로 받는 방법을 12/1 범위로 둡니다 |
 | 에코 처리 | 마이크가 답변 음성을 되받는 문제를 다루지 않습니다(이어폰 사용 전제) |
 | 여러 관람객 동시 접속 | 단일 세션입니다. 인증도 없습니다(11/13 결정, 12/1 범위) |
 | 10분 넘는 연결 | 세션 수명 처리는 모의 시험까지만 확인했고 실기기 확인은 아직입니다 |
@@ -137,4 +140,4 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | --- | --- |
 | 보내는 필드 | `server/app.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
 | 받는 필드 | `server/app.py`의 응답, `server/gemini_client.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
-| 실시간 음성(Gemini Live API) 주고받는 형식 | 위 [WS `/ws/live`](#ws-wslive--실시간-음성-gemini-live-api-1117-제안) 절, `tools/live_relay_spike.py`, `static/live_test.js`, `static/live_mic_worklet.js`, `static/live_player.js` (전환은 11/11 회의에서 확정) |
+| 실시간 음성(Gemini Live API) 주고받는 형식 | 위 [WS `/ws/live`](#ws-wslive--실시간-음성-gemini-live-api-1117-추가) 절, `server/live.py`, `static/live_test.js`, `static/live_mic_worklet.js`, `static/live_player.js` (전환은 11/11 회의에서 확정) |

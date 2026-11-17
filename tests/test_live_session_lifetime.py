@@ -1,7 +1,7 @@
 """Live 중계의 세션 수명 처리 시험. Gemini를 가짜로 바꿔 10분·15분을 기다리지 않고 확인한다.
 
 담당: FE1
-같이 보는 파일: tools/live_relay_spike.py (시험 대상), tools/fake_browser_live.py (실제 Gemini로 하는 확인)
+같이 보는 파일: server/live.py (시험 대상), tools/fake_browser_live.py (실제 Gemini로 하는 확인)
 
 왜 가짜로 하는가:
     연결 수명은 약 10분, 음성 전용 세션은 압축이 없으면 15분이다. 실제로 기다리면 한 번
@@ -24,7 +24,9 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 from google.genai.errors import APIError
 
-import tools.live_relay_spike as relay
+import server.live as relay
+import server.session as sessions
+from server.app import app as server_app
 
 ARTWORK = "KHD_SSIREUM"
 CLOSED_1008 = APIError(1008, {"error": {"code": 1008, "message": "Session closed due to client inactivity"}})
@@ -81,11 +83,13 @@ class FakeClient:
         self.connections = list(connections)
         self.handles = []      # 연결할 때마다 쓴 재개 핸들
         self.compression = []  # 연결할 때마다 쓴 컨텍스트 압축 설정
+        self.instructions = []  # 연결할 때마다 넣은 시스템 지시문
         self.aio = SimpleNamespace(live=SimpleNamespace(connect=self._connect))
 
     def _connect(self, *, model, config):
         self.handles.append(config.session_resumption.handle if config.session_resumption else None)
         self.compression.append(config.context_window_compression)
+        self.instructions.append(config.system_instruction)
         nxt = self.connections.pop(0) if self.connections else []
         client = self
 
@@ -101,7 +105,7 @@ class FakeClient:
         return Ctx()
 
 
-def run(connections, expect, timeout=10):
+def run(connections, expect, timeout=10, profile=None):
     """가짜 Gemini를 끼운 중계에 폰처럼 붙어 메시지 expect개를 받는다. (받은 것, 가짜 클라이언트).
 
     받는 일을 별도 실 에서 한다. 중계는 관람객이 있는 동안 끝나지 않으므로, 볼 것을 다 받으면
@@ -112,9 +116,12 @@ def run(connections, expect, timeout=10):
     got = []
     done = threading.Event()
 
-    with TestClient(relay.app) as c:
+    with TestClient(server_app) as c:
         with c.websocket_connect("/ws/live") as ws:
-            ws.send_text(json.dumps({"artwork_id": ARTWORK}))
+            first = {"artwork_id": ARTWORK}
+            if profile is not None:
+                first["profile"] = profile
+            ws.send_text(json.dumps(first))
 
             def reader():
                 try:
@@ -222,6 +229,40 @@ got, fake = run([
     [[]],
 ], expect=3)   # ready, reconnecting, reconnected
 check("쓸 수 있는 핸들만 남긴다", fake.handles[1] == "good", str(fake.handles))
+
+# ── 7. 턴이 끝나면 관람 기억에 남는다 (11/17에 더한 것) ────────────────────
+# 이전 중계는 server/session.py를 전혀 쓰지 않아 관람 기억이 쌓이지 않았고, 폰의 관람 요약
+# 화면(본 작품 수)이 비어 있었다. BE1 파일을 고치지 않고 record_turn을 부르는 것으로 해결했다.
+print("7. 관람 기억 기록")
+got, fake = run([
+    [[msg(heard="Who painted this?", said="Kim Hong-do painted it.", turn_complete=True)]],
+], expect=4)   # ready, heard, said, turn_complete
+ready = next(g for g in got if g["type"] == "ready")
+visit = sessions.get_session(ready.get("session_id", ""))
+check("ready에 이어 쓸 관람 세션 ID가 온다", visit is not None, str(ready.get("session_id")))
+check("본 작품으로 기록된다", visit is not None and visit.seen_artwork_ids == [ARTWORK],
+      str(visit.seen_artwork_ids if visit else None))
+check("질문과 답이 대화 기록에 남는다",
+      visit is not None and visit.history
+      and visit.history[-1]["visitor"] == "Who painted this?"
+      and visit.history[-1]["docent"] == "Kim Hong-do painted it.",
+      str(visit.history[-1] if visit and visit.history else None))
+# 음성으로 답하므로 어떤 비교를 썼는지 알 수 없다. 추측해서 채우지 않는다(server/live.py 머리말).
+check("쓰지 않은 비교쌍을 기록하지 않는다",
+      visit is not None and visit.used_comparison_ids == [],
+      str(visit.used_comparison_ids if visit else None))
+
+# ── 8. 지시문에 작품·프로필·비교 후보가 들어간다 ───────────────────────────
+# 이전에는 ASK_INSTRUCTION(작품 한 점, 비교 없음)을 써서 "외국 작품과 비교"가 빠져 있었다.
+print("8. 시스템 지시문 (BE1 build_live_instruction)")
+got, fake = run([
+    [[msg(heard="hi", turn_complete=True)]],
+], expect=3, profile={"country": "France", "age_group": "adult", "language": "en"})
+instruction = fake.instructions[0] or ""
+check("작품 사실이 들어간다", "FACTS (the only facts you may use)" in instruction)
+check("프로필이 들어간다", "VISITOR PROFILE" in instruction and "France" in instruction)
+check("비교 후보 칸이 들어간다", "COMPARISON OPTIONS" in instruction)
+check("요청-응답용 규칙을 쓰지 않는다", "Do not greet or welcome the visitor" not in instruction)
 
 print()
 if failures:

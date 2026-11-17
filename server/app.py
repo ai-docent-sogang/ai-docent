@@ -9,6 +9,8 @@
     POST /api/turn                  대화 한 번: 음성·글 + 사진 → 도슨트 답
     POST /api/session/{id}/end      관람 끝: 세션 기억 삭제
     POST /api/ask                   텍스트 질문·답변: 작품 ID + 질문 → 답변 (server/ask.py)
+    WS   /ws/live                   실시간 음성 대화 중계 (server/live.py, FE1)
+    GET  /live                      Live 음성 시험 페이지 (server/live.py, 운영 화면 아님)
 요청·응답 형식을 바꾸면 static/api.js(FE1)가 고장 나므로 docs/api.md를 먼저 고치고 FE1과 합의한다.
 
 음성과 사진은 요청을 처리하는 동안만 메모리에 있고 파일로 저장하지 않는다.
@@ -24,6 +26,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import ask as ask_api
+from . import live as live_api
 from . import session as sessions
 from .content import load_artworks, load_comparisons
 from .gemini_client import ask_docent, make_client
@@ -52,6 +55,12 @@ def gemini():
 ask_api.artworks = artworks
 ask_api.get_client = gemini
 app.include_router(ask_api.router)
+
+# 실시간 음성 대화 중계(WS /ws/live). 경로는 11/17에 BE1과 합의했다(11-18_통합_인터페이스.md 미정 표).
+# 중계 코드는 FE1 담당(server/live.py)이고, 지시문은 BE1의 live_context.build_live_instruction을 쓴다.
+live_api.artworks = artworks
+live_api.comparisons = comparisons
+app.include_router(live_api.router)
 
 
 @app.get("/")
