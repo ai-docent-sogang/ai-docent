@@ -3,6 +3,7 @@
 // documented profile API before personalization can influence Gemini responses.
 import { postTurn, startSession } from "./api.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
+import { createLiveConversation } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -44,6 +45,63 @@ let currentComparison = "";
 let returnScreen = "experience-screen";
 const viewedArtworks = new Map(); // artwork_id => {title,artist,comparisons:Set}. Session memory only.
 const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
+
+// ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
+// 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.
+// Live가 열리면 Hold to talk 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
+// Live를 못 열거나 도중에 error·끊김이 오면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다.
+let live = null;
+function setTalkLabel(label, hint) {
+  talkBtn.querySelector(".talk-label").textContent = label;
+  talkBtn.setAttribute("aria-label", label);
+  document.querySelector(".talk-hint").textContent = hint;
+}
+function useHoldToTalk() {
+  live = null;
+  talkBtn.classList.remove("recording");
+  talkBtn.removeAttribute("aria-pressed");
+  setTalkLabel("Hold to talk", "PRESS & HOLD TO ASK A QUESTION");
+}
+function liveHandlers() {
+  return {
+    onStatus: ({ state, status, label }) => {
+      setStatus(status);
+      setTalkLabel(label, "SPEAK ANYTIME · TAP TO MUTE");
+      talkBtn.classList.toggle("recording", state === "listening" || state === "speaking");
+      talkBtn.setAttribute("aria-pressed", String(state === "muted"));
+    },
+    onArtwork: (data) => recordArtwork(data), // {artwork_id, artwork_title}
+    onComparison: (data) => recordArtwork(data), // {artwork_id, comparison_id}: 요약·상세의 비교에 누적
+    onFallback: (reason) => {
+      console.warn("Live stopped, falling back to /api/turn:", reason);
+      useHoldToTalk();
+      talkBtn.disabled = !sessionId;
+      setStatus("Live voice stopped. Hold the talk button to ask.");
+    },
+  };
+}
+// 성공하면 true(인사는 Live가 말한다). 실패하면 false — 부른 쪽이 기존 인사·버튼 방식으로 계속한다.
+async function startLive(conversation, session) {
+  setStatus("Connecting to your guide…");
+  try {
+    await conversation.open({
+      sessionId: session.session_id,
+      // 값 이름 맞추기는 11/18 회의 의제. 지금은 화면 선택값을 그대로 보낸다.
+      profile: { country: $("region-select").value, age_group: $("age-select").value, language: "en" },
+      stream,
+    });
+    live = conversation;
+    talkBtn.disabled = false;
+    return true;
+  } catch (error) {
+    console.warn("Live unavailable, using /api/turn:", error.message);
+    conversation.close();
+    useHoldToTalk();
+    return false;
+  }
+}
+talkBtn.addEventListener("click", () => { if (live) live.toggleMuted(); });
+// ── FE1 Live 연결 끝 ──────────────────────────────────────────────────────────────────
 
 function showScreen(id) {
   for (const name of ["welcome-screen", "experience-screen", "summary-screen"]) $(name).hidden = name !== id;
@@ -165,6 +223,9 @@ $("onboarding-form").addEventListener("submit",async event=>{
   event.preventDefault();
   if(sessionId)return;
   $("start").disabled=true;
+  // FE1 Live 연결 (11/18): 아이폰은 사용자 동작 안, 첫 await 전에 소리를 깨워야 한다.
+  const pendingLive=createLiveConversation({log:$("log"),video,handlers:liveHandlers()});
+  pendingLive.prime();
   // Local UI selection does not yet go to Gemini. Do not pretend profile sync succeeded.
   try{
     await initAudio();
@@ -177,11 +238,15 @@ $("onboarding-form").addEventListener("submit",async event=>{
     const data=await startSession();
     sessionId=data.session_id;
     showScreen("experience-screen");
+    // FE1 Live 연결 (11/18): Live가 열리면 첫 인사도 Live가 말한다(speechSynthesis로 읽지 않는다).
+    if(await startLive(pendingLive,data))return;
+    // 여기부터는 Live를 못 열었을 때의 기존 방식 그대로.
     addMessage("docent",data.reply);
     rememberReply(data.reply);
     talkBtn.disabled=false;
     setStatus("Point the camera at an artwork and hold the talk button.");
   }catch(error){
+    pendingLive.close(); // FE1 Live 연결 (11/18)
     if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
     $("start").disabled=false;
     alert("Could not start visit: "+error.message);
@@ -190,6 +255,7 @@ $("onboarding-form").addEventListener("submit",async event=>{
 
 talkBtn.addEventListener("pointerdown",event=>{
   event.preventDefault();
+  if(live)return; // FE1 Live 연결 (11/18): Live 중에는 누르고 있을 필요가 없다(click이 음소거 토글)
   if(busy||!stream||!sessionId)return;
   if(!window.MediaRecorder){setStatus("Audio recording is unsupported in this browser. Use the text field.");return;}
   stopSpeaking();
@@ -208,6 +274,7 @@ talkBtn.addEventListener("pointerdown",event=>{
 });
 for(const type of ["pointerup","pointercancel","lostpointercapture"]){
   talkBtn.addEventListener(type,()=>{
+    if(live)return; // FE1 Live 연결 (11/18)
     if(recorder?.state==="recording")recorder.stop();
     talkBtn.classList.remove("recording");
     talkBtn.querySelector(".talk-label").textContent="Hold to talk";
@@ -227,6 +294,7 @@ $("text-form").addEventListener("submit",async event=>{
   const text=$("text-input").value.trim();
   if(!text||!sessionId||busy)return;
   $("text-input").value="";
+  if(live&&live.sendText(text))return; // FE1 Live 연결 (11/18): 글 질문도 Live로. 못 보내면 기존 방식
   await sendTurn({text,frame:await captureFrame()});
 });
 async function sendTurn({audio,text,frame}){
@@ -267,6 +335,7 @@ $("end-visit").addEventListener("click",async()=>{
   if(busy)return;
   $("end-visit").disabled=true;
   stopSpeaking();
+  if(live){live.close();useHoldToTalk();} // FE1 Live 연결 (11/18): 마이크·사진 전송을 멈추고 WS를 닫는다
   if(recorder?.state==="recording")recorder.stop();
   if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
   video.srcObject=null;
