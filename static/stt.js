@@ -14,6 +14,12 @@
 // 아이폰 Safari는 사용자가 버튼을 누른 흐름에서만 마이크를 허용한다. start()를 await 뒤에서
 // 부르지 않는다(audio.js의 initAudio와 같은 이유).
 
+// 2026-11-17 현재 이 모듈은 화면에 연결되어 있지 않다.
+// FE2의 AIVY UI(#15)에서 말로 묻는 경로는 Hold-to-talk 버튼이고, 녹음을 POST /api/turn으로
+// 보내 서버가 글자로 바꾼다. 브라우저 STT는 FE1이 비교 대상으로 만든 다른 방법이고,
+// 11/11 회의에서 Live API 전환이 확정돼 그쪽이 본선이 됐다. 지우지 않고 두는 이유는
+// Live가 막히거나 네트워크가 느릴 때 쓸 수 있는 대체 경로이고, 테스트가 걸려 있어서다.
+
 // 브라우저마다 이름이 다르다. Safari와 Chrome은 webkit 접두사를 쓴다.
 const Recognition = typeof window === "undefined"
   ? null
