@@ -403,7 +403,8 @@ arts = [g for g in got if isinstance(g, dict) and g.get("type") == "artwork"]
 comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
 check("폰에 artwork를 보낸다", arts and arts[0]["artwork_id"] == ARTWORK and arts[0]["artwork_title"], str(arts))
 check("폰에 comparison은 받은 것 하나만 보낸다",
-      comps == [{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": ARTWORK}], str(comps))
+      comps == [{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": ARTWORK,
+                 "source": "function"}], str(comps))
 visit = sessions.get_session(got[0]["session_id"])
 check("record_turn에 작품과 comparison_id가 들어간다",
       visit.seen_artwork_ids == [ARTWORK] and visit.used_comparison_ids == ["C_KHD_BRUEGEL"],
@@ -610,6 +611,58 @@ got, fake = run([[[msg(said="<no speech>"), msg(said="{pause}"), msg(said="\u200
                 expect=2, first=HANDSFREE)
 check("표시만 있는 조각은 said로 보내지 않는다", types_of(got) == ["ready", "turn_complete"], str(types_of(got)))
 check("정상 문장은 그대로 둔다", relay.clean_said("Look at the shoes.") == "Look at the shoes.")
+
+print("25. 함수 없이 말한 비교를 받아쓰기에서 찾는다")
+ART_CALL = msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])
+got, fake = run([[
+    [ART_CALL],
+    [msg(heard="Compare it?"), msg(said="Think of Pieter Bruegel's \"Peasant Wedding\"."), msg(turn_complete=True)],
+]], expect=6, first=HANDSFREE, linger=0.3)   # ready, artwork, heard, said, comparison, turn_complete
+comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
+visit = sessions.get_session(got[0]["session_id"])
+check("함수 없이 제목이 나오면 comparison(source transcript)을 보낸다",
+      comps == [{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": ARTWORK,
+                 "source": "transcript"}], str(comps))
+check("record_turn에 그 비교가 누적된다", visit.used_comparison_ids == ["C_KHD_BRUEGEL"], str(visit.used_comparison_ids))
+
+got, fake = run([[
+    [ART_CALL],
+    [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
+    [msg(said="Think of Peasant Wedding by Bruegel."), msg(turn_complete=True)],
+]], expect=5, first=HANDSFREE, linger=0.3)
+comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
+check("함수가 불린 턴은 받아쓰기로 다시 보내지 않는다",
+      [c.get("source") for c in comps] == ["function"], str(comps))
+
+got, fake = run([[
+    [ART_CALL],
+    [msg(said="Some compare it with Mont Sainte-Victoire by Cezanne or Children's Games by Bruegel."),
+     msg(turn_complete=True)],
+]], expect=4, first=HANDSFREE, linger=0.3)
+check("다른 작품의 비교쌍 제목은 무시한다", "comparison" not in types_of(got), str(types_of(got)))
+
+got, fake = run([[
+    [msg(said="This looks like Peasant Wedding."), msg(turn_complete=True)],
+]], expect=3, first=HANDSFREE, linger=0.3)
+check("지금 작품이 없으면 찾지 않는다", "comparison" not in types_of(got), str(types_of(got)))
+
+got, fake = run([[
+    [ART_CALL],
+    [msg(said="Peasant Wedding by Bruegel shows a feast."), msg(turn_complete=True)],
+    WaitClientContent(3, [msg(said="Back to Peasant Wedding again."), msg(turn_complete=True)]),
+]], expect=7, first=HANDSFREE, linger=0.3, after_ready=[{"type": "text", "text": "more?"},
+                                                         {"type": "text", "text": "and?"}])
+comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
+check("이미 누적된 비교는 다시 보내지 않는다", len(comps) == 1, str(comps))
+
+got, fake = run([[
+    [ART_CALL],
+    [msg(said="Hokusai drew a red fuji too."), msg(turn_complete=True)],
+]], expect=4, first=HANDSFREE, linger=0.3)
+check("다른 작품의 짧은 제목(Red Fuji)도 무시한다", "comparison" not in types_of(got), str(types_of(got)))
+check("짧은 제목은 작가 이름이 있어야 인정한다(INWANG에서)",
+      relay.comparison_in_transcript("like Red Fuji", "JS_INWANG") == ""
+      and relay.comparison_in_transcript("Hokusai painted Red Fuji", "JS_INWANG") == "C_INWANG_HOKUSAI")
 
 print()
 if failures:
