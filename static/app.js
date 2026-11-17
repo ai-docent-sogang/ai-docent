@@ -3,7 +3,7 @@
 // documented profile API before personalization can influence Gemini responses.
 import { postTurn, startSession } from "./api.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
-import { createLiveConversation, createWakeLock } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
+import { continueSavedVisit, createLiveConversation, createVisitStore, createWakeLock } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -52,7 +52,11 @@ const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
 // 처음 연결에 실패하면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다. 도중 끊김·error는
 // live_conversation.js가 END VISIT 전까지 스스로 다시 붙는다(버튼 방식으로 바꾸지 않는다. 글라스를 쓰면 누를 화면이 없다).
 // 글라스를 쓰면 폰 화면이 꺼지므로 화면 꺼짐 막기(Wake Lock)를 시도하고, 숨김·다시 보임을 Live에 알린다.
+// 아이폰은 잠금 해제 뒤 페이지를 새로 불러온다. 그래서 Live 관람의 식별자만 sessionStorage에 두고
+// (대화·사진·음성은 저장하지 않는다), 새로 뜨면 "Tap to continue your visit"로 같은 관람을 잇는다.
 let live = null;
+const visitStore = createVisitStore();
+let savedVisit = null; // 새로고침 뒤 이어 갈 관람. 버튼을 누르기 전까지만 있다.
 let screenNote = false; // Wake Lock을 못 쓰면 "Keep the screen on" 안내를 한 번 보인다
 const wakeLock = createWakeLock({ onUnsupported: () => { screenNote = true; } });
 function showScreenNoteOnce() {
@@ -101,14 +105,12 @@ function liveHandlers() {
 // 성공하면 true(인사는 Live가 말한다). 실패하면 false — 부른 쪽이 기존 인사·버튼 방식으로 계속한다.
 async function startLive(conversation, session) {
   setStatus("Connecting to your guide…");
+  // 값 이름 맞추기는 11/18 회의 의제. 지금은 화면 선택값을 그대로 보낸다.
+  const profile = { country: $("region-select").value, age_group: $("age-select").value, language: "en" };
   try {
-    await conversation.open({
-      sessionId: session.session_id,
-      // 값 이름 맞추기는 11/18 회의 의제. 지금은 화면 선택값을 그대로 보낸다.
-      profile: { country: $("region-select").value, age_group: $("age-select").value, language: "en" },
-      stream,
-    });
+    await conversation.open({ sessionId: session.session_id, profile, stream });
     live = conversation;
+    visitStore.save({ session_id: session.session_id, profile }); // 새로고침 뒤 잇기용 식별자만
     talkBtn.disabled = false;
     return true;
   } catch (error) {
@@ -118,7 +120,44 @@ async function startLive(conversation, session) {
     return false;
   }
 }
+// 새로고침 뒤 "Tap to continue your visit"(사용자 동작 안). /api/session을 새로 만들지 않고 저장된 관람을 잇는다.
+async function continueVisit() {
+  const saved = savedVisit;
+  savedVisit = null;
+  talkBtn.disabled = true;
+  const conversation = createLiveConversation({ log: $("log"), video, handlers: liveHandlers() });
+  wakeLock.request();
+  initAudio().catch(() => {}); // 브라우저 TTS·녹음 변환용 소리 장치도 사용자 동작 안에서 깨운다
+  try {
+    const { ready } = await continueSavedVisit({
+      saved, conversation, store: visitStore,
+      getMedia: async () => {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 } },
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        video.srcObject = stream;
+        video.addEventListener("playing", () => { $("camera-empty").hidden = true; }, { once: true });
+        return stream;
+      },
+    });
+    sessionId = ready.session_id || saved.session_id;
+    live = conversation;
+    talkBtn.disabled = false;
+  } catch (error) {
+    // 기록은 continueSavedVisit이 지웠다. 첫 화면으로 돌아가 새 관람을 시작하게 한다.
+    console.warn("Could not continue the visit:", error.message);
+    stream = null;
+    video.srcObject = null;
+    useHoldToTalk();
+    talkBtn.disabled = true;
+    $("start").disabled = false;
+    setStatus("Ready to explore.");
+    showScreen("welcome-screen");
+  }
+}
 talkBtn.addEventListener("click", () => {
+  if (savedVisit) { continueVisit(); return; }
   if (!live) return;
   if (live.needsTap) live.resumeAudio(); // "Tap to resume": 아이폰은 소리 장치를 깨우는 데 사용자 동작이 필요하다
   else live.toggleMuted();
@@ -128,6 +167,15 @@ document.addEventListener("visibilitychange", () => {
   if (visible && sessionId) wakeLock.request(); // 숨겨지면 브라우저가 자동으로 풀므로 다시 요청한다
   live?.setVisible(visible);
 });
+// 페이지가 뜰 때: 2시간 안의 Live 관람 기록이 있으면 첫 화면 대신 관람 화면과 이어 가기 버튼을 보인다.
+// 대화 기록과 요약(viewedArtworks)은 브라우저 메모리라 새로고침 때 사라진다(서버 세션에는 남아 있다).
+savedVisit = visitStore.load();
+if (savedVisit) {
+  showScreen("experience-screen");
+  talkBtn.disabled = false;
+  setTalkLabel("Tap to continue your visit", "YOUR VISIT WAS PAUSED");
+  setStatus("Your visit was paused. Tap the button below to continue.");
+}
 // ── FE1 Live 연결 끝 ──────────────────────────────────────────────────────────────────
 
 function showScreen(id) {
@@ -303,7 +351,7 @@ talkBtn.addEventListener("pointerdown",event=>{
 });
 for(const type of ["pointerup","pointercancel","lostpointercapture"]){
   talkBtn.addEventListener(type,()=>{
-    if(live)return; // FE1 Live 연결 (11/18)
+    if(live||savedVisit)return; // FE1 Live 연결 (11/18)
     if(recorder?.state==="recording")recorder.stop();
     talkBtn.classList.remove("recording");
     talkBtn.querySelector(".talk-label").textContent="Hold to talk";
@@ -365,7 +413,7 @@ $("end-visit").addEventListener("click",async()=>{
   $("end-visit").disabled=true;
   stopSpeaking();
   if(live){live.close();useHoldToTalk();} // FE1 Live 연결 (11/18): 마이크·사진 전송을 멈추고 WS를 닫는다
-  wakeLock.release(); // FE1 Live 연결 (11/18)
+  wakeLock.release();visitStore.clear();savedVisit=null; // FE1 Live 연결 (11/18): 관람 기록도 지운다
   if(recorder?.state==="recording")recorder.stop();
   if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
   video.srcObject=null;
