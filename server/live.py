@@ -60,6 +60,7 @@ import base64
 import binascii
 import json
 import os
+import re
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -90,6 +91,41 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 LIVE_MODEL = os.environ.get("LIVE_MODEL", "gemini-3.8-live")
 # 도슨트 목소리. 팀 규칙(11/13): 청취로 정하지 못하면 Kore. 두 모드가 같은 목소리를 쓴다.
 LIVE_VOICE = os.environ.get("LIVE_VOICE", "").strip() or "Kore"
+
+
+def _env_int(name, default):
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        print(f"[live] {name} 값이 숫자가 아니라 기본값 {default}을 쓴다")
+        return default
+
+
+# handsfree 자동 음성 감지 조절점(11/18 실기기에서 "음", "네" 같은 추임새에도 답해서 더함).
+#   LIVE_START_SENSITIVITY: LOW면 말의 시작을 덜 자주 잡는다(짧은 추임새를 덜 잡는다). 기본 LOW.
+#   LIVE_SILENCE_MS: 이만큼 조용하면 말이 끝났다고 본다. 기본 700(공식 문서 권장 500~800).
+#   LIVE_PREFIX_MS: 말로 인정하기 전에 필요한 말소리 길이. 기본 300.
+# 필드 이름은 google-genai 2.34.0 types.py의 AutomaticActivityDetection·StartSensitivity로 확인.
+LIVE_START_SENSITIVITY = (os.environ.get("LIVE_START_SENSITIVITY", "").strip().upper() or "LOW")
+if LIVE_START_SENSITIVITY not in ("LOW", "HIGH"):
+    print(f"[live] LIVE_START_SENSITIVITY={LIVE_START_SENSITIVITY}는 LOW/HIGH가 아니라 LOW를 쓴다")
+    LIVE_START_SENSITIVITY = "LOW"
+LIVE_SILENCE_MS = _env_int("LIVE_SILENCE_MS", 700)
+LIVE_PREFIX_MS = _env_int("LIVE_PREFIX_MS", 300)
+
+# handsfree 사진 정책(11/18 실기기에서 답 도중 목소리가 바뀌었다. 영상이 들어가면 더 잦다는 포럼 측정이 있다).
+#   every: 폰이 보낸 사진을 받는 대로 넘긴다(기본).
+#   on_speech: 서버가 최신 1장만 들고 있다가, 관람객 말이 시작된 신호(그 턴의 첫 받아쓰기)와 글 질문 때
+#              1장만 넘긴다. Gemini 연결 직후 처음 오는 1장도 넘긴다.
+FRAME_POLICY = os.environ.get("LIVE_FRAME_POLICY", "").strip().lower() or "every"
+if FRAME_POLICY not in ("every", "on_speech"):
+    print(f"[live] LIVE_FRAME_POLICY={FRAME_POLICY}는 every/on_speech가 아니라 every를 쓴다")
+    FRAME_POLICY = "every"
+
+# handsfree에서 폰이 이 시간(초) 동안 아무것도 보내지 않으면(소리·사진·글·ping) 죽은 연결로 보고 닫는다.
+# 11/18 실기기: 잠금을 풀자 Safari가 페이지를 새로 불렀는데 앞 WS의 끝을 서버가 알지 못해(cloudflared 경유)
+# Gemini 세션이 계속 살아 있었다. 폰은 화면이 보일 때 100ms마다 소리를, 5초마다 ping을 보낸다.
+PHONE_IDLE_S = float(os.environ.get("LIVE_PHONE_IDLE_S", "").strip() or 30)
 
 # 말의 앞뒤에 넣는 무음(push 모드). 경계에 말이 바로 붙으면 첫 단어·끝 단어가 잘린다. 11/11 측정에서
 # 취약 문장 5개를 조건별 5회(각 25건) 시험해 완전 일치가 10/25 → 25/25였다.
@@ -136,6 +172,17 @@ def live_test_page():
     아이폰 Safari에서 마이크 16kHz 전송과 24kHz 재생이 되는지 확인하는 데 쓴다.
     """
     return FileResponse(STATIC_DIR / "live_test.html")
+
+
+# 답변 받아쓰기에 섞여 오는 표시. 11/18 실측: 추임새에 침묵하려던 턴의 받아쓰기가 "<no speech>{pause}"나
+# 폭 없는 문자(U+200B)만으로 왔다. 그대로 보내면 폰의 도슨트 말풍선에 그 글자가 뜬다.
+SAID_MARKUP = re.compile(r"<no speech>|\{pause\}|[\u200b\u200c\u200d\ufeff]")
+
+
+def clean_said(text):
+    """받아쓰기 조각에서 말이 아닌 표시를 뺀다. 남는 말이 없으면 빈 문자열."""
+    cleaned = SAID_MARKUP.sub("", text)
+    return cleaned if cleaned.strip() else ""
 
 
 async def send_silence(session):
@@ -224,7 +271,12 @@ def handsfree_instruction(profile):
         "and kindly ask the visitor to point the camera at the painting. Never guess between two works.\n"
         "- Before you start a comparison with a foreign painting, call report_comparison with its "
         "comparison_id from the latest COMPARISON OPTIONS. Do not compare with anything else.\n"
-        "- Never read ids or function names aloud.",
+        "- Never read ids or function names aloud.\n"
+        "- When the visitor only makes a short backchannel or filler (for example \"mm-hmm\", \"yeah, I see\", "
+        "\"uh-huh\"), talks to themselves, or talks with someone else, do not respond at all: produce no "
+        "words. Never announce, explain, or describe that you are staying silent. "
+        "A short \"yes\" or \"okay\" right after you asked a question is an answer to it, not a filler. "
+        "Speak only when they ask you something or clearly talk to you.",
     ])
 
 
@@ -239,8 +291,13 @@ def handsfree_config(profile):
         output_audio_transcription=types.AudioTranscriptionConfig(),
         realtime_input_config=types.RealtimeInputConfig(
             # 자동 음성 감지를 켠다. 폰이 침묵까지 계속 보내므로 Gemini가 말의 끝을 판단할 수 있다.
-            # 민감도·침묵 길이는 기본값이다. 측정값 없이 숫자를 정하지 않는다.
-            automatic_activity_detection=types.AutomaticActivityDetection(disabled=False),
+            # 민감도·침묵 길이·앞 여유는 환경 변수로 조절한다(위 LIVE_START_SENSITIVITY 등).
+            automatic_activity_detection=types.AutomaticActivityDetection(
+                disabled=False,
+                start_of_speech_sensitivity=types.StartSensitivity(f"START_SENSITIVITY_{LIVE_START_SENSITIVITY}"),
+                silence_duration_ms=LIVE_SILENCE_MS,
+                prefix_padding_ms=LIVE_PREFIX_MS,
+            ),
             # 기본값(TURN_INCLUDES_ONLY_ACTIVITY)은 말이 없던 동안의 입력을 턴에서 뺀다. 사진은 말과
             # 상관없이 3초마다 오므로 모두 넣는다(SDK 설명: "audio activity and all video").
             turn_coverage=types.TurnCoverage.TURN_INCLUDES_AUDIO_ACTIVITY_AND_ALL_VIDEO,
@@ -317,7 +374,20 @@ async def live(ws: WebSocket):
     #   comparison_id: 이번 턴에 report_comparison으로 보고된 비교(handsfree만). 기록하면 비운다.
     state = {"session": None, "handle": saved["handle"] if saved else None, "turn_open": False,
              "heard": "", "said": "",
-             "artwork_id": art["artwork_id"] if art else art_from_resume, "comparison_id": ""}
+             "artwork_id": art["artwork_id"] if art else art_from_resume, "comparison_id": "",
+             # 폰이 마지막으로 무언가 보낸 시각(죽은 연결 판단, handsfree)
+             "last_input": time.monotonic(),
+             # on_speech 정책: 들고 있는 최신 사진, 이 Gemini 연결에서 첫 사진을 넘겼는지
+             "latest_frame": None, "first_frame_sent": False, "turn_frame_sent": False}
+
+    async def send_frame(session, jpeg):
+        await session.send_realtime_input(video=types.Blob(data=jpeg, mime_type="image/jpeg"))
+
+    async def send_held_frame(session):
+        """on_speech 정책: 들고 있던 최신 사진 1장을 넘긴다(넘긴 뒤 비운다. 같은 사진을 거듭 넣지 않는다)."""
+        jpeg, state["latest_frame"] = state["latest_frame"], None
+        if jpeg:
+            await send_frame(session, jpeg)
 
     def save_resume():
         """재개 핸들·지금 작품을 저장소에 남긴다. 폰 WS가 끊겨도 다음 연결이 이어 쓴다."""
@@ -389,6 +459,7 @@ async def live(ws: WebSocket):
             msg = await ws.receive()
             if msg["type"] == "websocket.disconnect":
                 return
+            state["last_input"] = time.monotonic()
             session = state["session"]
             data = None
             if msg.get("text"):
@@ -396,6 +467,23 @@ async def live(ws: WebSocket):
                     data = json.loads(msg["text"])
                 except ValueError:
                     continue
+                if data.get("type") == "ping":
+                    continue    # 살아 있다는 신호. 받기만 하고 Gemini로 보내지 않는다.
+                if mode == "handsfree" and data.get("type") == "frame":
+                    try:
+                        jpeg = base64.b64decode(data.get("jpeg") or "", validate=True)
+                    except (binascii.Error, ValueError):
+                        continue
+                    if not jpeg:
+                        continue
+                    data = {"type": "frame", "jpeg_bytes": jpeg}
+                    if FRAME_POLICY == "on_speech":
+                        # 최신 1장만 들고 있는다. 연결 직후 첫 1장만 바로 넘긴다.
+                        state["latest_frame"] = jpeg
+                        if session is None or state["first_frame_sent"]:
+                            continue
+                        state["first_frame_sent"] = True
+                        state["latest_frame"] = None
             if session is None:
                 # 재연결 중. 이 조각은 버린다. push는 버튼 신호마다 다시 눌러 달라고 알린다.
                 # handsfree는 사진이 3초마다 오므로 글 질문에만 알린다(소리·사진은 조용히 버린다).
@@ -417,16 +505,12 @@ async def live(ws: WebSocket):
                         await send_silence(session)  # 끝 단어가 잘리지 않게
                         await session.send_realtime_input(activity_end=types.ActivityEnd())
                 elif data.get("type") == "frame":    # handsfree: 카메라 사진(저장하지 않는다)
-                    try:
-                        jpeg = base64.b64decode(data.get("jpeg") or "", validate=True)
-                    except (binascii.Error, ValueError):
-                        continue
-                    if jpeg:
-                        await session.send_realtime_input(
-                            video=types.Blob(data=jpeg, mime_type="image/jpeg"))
+                    await send_frame(session, data["jpeg_bytes"])
                 elif data.get("type") == "text":     # handsfree: 글로 묻기
                     text = (data.get("text") or "").strip()
                     if text:
+                        if FRAME_POLICY == "on_speech":
+                            await send_held_frame(session)   # 질문하는 순간의 사진
                         state["heard"] += text
                         await session.send_client_content(
                             turns=types.Content(role="user", parts=[types.Part(text=text)]),
@@ -472,6 +556,11 @@ async def live(ws: WebSocket):
                 # 관람객이 답을 끊었다. 폰은 재생 중인 소리를 바로 멈춰야 한다.
                 to_browser.put_nowait(("text", {"type": "interrupted"}))
             if c.input_transcription and c.input_transcription.text:
+                if mode == "handsfree" and FRAME_POLICY == "on_speech" and not state["turn_frame_sent"]:
+                    # 이번 턴의 첫 받아쓰기 = 관람객이 말을 시작했다. 그때의 사진 1장을 넘긴다.
+                    # (state["heard"]로 판단하지 않는다: 추임새에 Live가 침묵하면 heard가 다음 턴까지 남는다)
+                    state["turn_frame_sent"] = True
+                    await send_held_frame(session)
                 state["heard"] += c.input_transcription.text
                 to_browser.put_nowait(("text", {"type": "heard", "text": c.input_transcription.text}))
             if c.model_turn:
@@ -481,10 +570,13 @@ async def live(ws: WebSocket):
                         to_browser.put_nowait(("bytes", part.inline_data.data))  # 24kHz PCM 그대로
             if c.output_transcription and c.output_transcription.text:
                 state["turn_open"] = True
-                state["said"] += c.output_transcription.text
-                to_browser.put_nowait(("text", {"type": "said", "text": c.output_transcription.text}))
+                text = clean_said(c.output_transcription.text)
+                if text:
+                    state["said"] += text
+                    to_browser.put_nowait(("text", {"type": "said", "text": text}))
             if c.turn_complete:
                 state["turn_open"] = False
+                state["turn_frame_sent"] = False
                 remember_turn()
                 to_browser.put_nowait(("text", {"type": "turn_complete"}))
                 if going_away:
@@ -540,6 +632,7 @@ async def live(ws: WebSocket):
                 async with client.aio.live.connect(model=LIVE_MODEL, config=config) as session:
                     opened = time.monotonic()
                     state["session"] = session
+                    state["first_frame_sent"] = False   # on_speech: 새 연결마다 첫 사진 1장은 바로 넘긴다
                     resumed = want_resume and had_handle
                     to_browser.put_nowait(("text", {
                         "type": "ready" if first_time else "reconnected",
@@ -601,6 +694,20 @@ async def live(ws: WebSocket):
     # kicked: 같은 session_id로 새 폰 연결이 오면 켜진다 → 이 연결을 닫는다.
     tasks = [asyncio.create_task(f()) for f in (browser_to_gemini, gemini_sessions, queue_to_browser)]
     tasks.append(asyncio.create_task(kicked.wait()))
+
+    async def phone_watchdog():
+        """handsfree: 폰이 PHONE_IDLE_S초 동안 아무것도 보내지 않으면 죽은 연결로 보고 끝낸다."""
+        while True:
+            idle = time.monotonic() - state["last_input"]
+            if idle >= PHONE_IDLE_S:
+                print(f"[live] 폰이 {idle:.0f}초 동안 아무것도 보내지 않아 죽은 연결로 보고 닫는다({sid[:8]})")
+                return
+            await asyncio.sleep(min(PHONE_IDLE_S - idle, 1.0))
+
+    phone_silent = None
+    if mode == "handsfree":
+        phone_silent = asyncio.create_task(phone_watchdog())
+        tasks.append(phone_silent)
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         # 이 관람의 지금 연결에서 바로 뺀다. 아래 정리(Gemini 연결 닫기)는 몇 초 걸릴 수 있는데,
@@ -628,6 +735,11 @@ async def live(ws: WebSocket):
             del active_connections[sid]
     print(f"[live] 폰 연결 끝({sid[:8]}, {mode}). 저장된 핸들 "
           f"{'있음' if (resume_store.get(sid) or {}).get('handle') else '없음'}")
+    if phone_silent is not None and phone_silent.done() and not phone_silent.cancelled():
+        try:
+            await ws.close(code=4001, reason="no input from the phone")
+        except Exception:
+            pass
     if kicked.is_set():
         print(f"[live] 같은 관람({sid[:8]})의 새 연결이 와서 앞 연결을 닫는다")
         try:
