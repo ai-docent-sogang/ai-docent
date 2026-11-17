@@ -3,7 +3,7 @@
 // documented profile API before personalization can influence Gemini responses.
 import { postTurn, startSession } from "./api.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
-import { createLiveConversation } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
+import { createLiveConversation, createWakeLock } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -49,8 +49,17 @@ const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
 // ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
 // 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.
 // Live가 열리면 Hold to talk 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
-// Live를 못 열거나 도중에 error·끊김이 오면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다.
+// 처음 연결에 실패하면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다. 도중 끊김·error는
+// live_conversation.js가 90초 동안 스스로 다시 붙고, 그래도 안 될 때만 onFallback으로 버튼 방식이 된다.
+// 글라스를 쓰면 폰 화면이 꺼지므로 화면 꺼짐 막기(Wake Lock)를 시도하고, 숨김·다시 보임을 Live에 알린다.
 let live = null;
+let screenNote = false; // Wake Lock을 못 쓰면 "Keep the screen on" 안내를 한 번 보인다
+const wakeLock = createWakeLock({ onUnsupported: () => { screenNote = true; } });
+function showScreenNoteOnce() {
+  if (screenNote !== true) return;
+  screenNote = "shown";
+  setStatus("Keep the screen on during your visit");
+}
 function setTalkLabel(label, hint) {
   talkBtn.querySelector(".talk-label").textContent = label;
   talkBtn.setAttribute("aria-label", label);
@@ -70,8 +79,17 @@ function liveHandlers() {
       talkBtn.classList.toggle("recording", state === "listening" || state === "speaking");
       talkBtn.setAttribute("aria-pressed", String(state === "muted"));
     },
-    onArtwork: (data) => recordArtwork(data), // {artwork_id, artwork_title}
+    onArtwork: (data) => {
+      // Live는 함수를 부를 때마다 artwork를 보낸다. 같은 작품이면 칩·요약·지금 비교를 건드리지 않는다.
+      if (data.artwork_id === currentArtwork && viewedArtworks.has(data.artwork_id)) return;
+      recordArtwork(data); // {artwork_id, artwork_title}
+    },
     onComparison: (data) => recordArtwork(data), // {artwork_id, comparison_id}: 요약·상세의 비교에 누적
+    onMicStream: (fresh) => { // 마이크 트랙이 끝나 새로 얻었다. 기존 녹음 경로도 새 트랙을 쓰게 바꿔 끼운다.
+      if (!stream) return;
+      stream.getAudioTracks().forEach((t) => { stream.removeTrack(t); t.stop(); });
+      fresh.getAudioTracks().forEach((t) => stream.addTrack(t));
+    },
     onFallback: (reason) => {
       console.warn("Live stopped, falling back to /api/turn:", reason);
       useHoldToTalk();
@@ -100,7 +118,16 @@ async function startLive(conversation, session) {
     return false;
   }
 }
-talkBtn.addEventListener("click", () => { if (live) live.toggleMuted(); });
+talkBtn.addEventListener("click", () => {
+  if (!live) return;
+  if (live.needsTap) live.resumeAudio(); // "Tap to resume": 아이폰은 소리 장치를 깨우는 데 사용자 동작이 필요하다
+  else live.toggleMuted();
+});
+document.addEventListener("visibilitychange", () => {
+  const visible = document.visibilityState === "visible";
+  if (visible && sessionId) wakeLock.request(); // 숨겨지면 브라우저가 자동으로 풀므로 다시 요청한다
+  live?.setVisible(visible);
+});
 // ── FE1 Live 연결 끝 ──────────────────────────────────────────────────────────────────
 
 function showScreen(id) {
@@ -226,6 +253,7 @@ $("onboarding-form").addEventListener("submit",async event=>{
   // FE1 Live 연결 (11/18): 아이폰은 사용자 동작 안, 첫 await 전에 소리를 깨워야 한다.
   const pendingLive=createLiveConversation({log:$("log"),video,handlers:liveHandlers()});
   pendingLive.prime();
+  wakeLock.request(); // 사용자 동작 안에서 화면 꺼짐 막기를 요청한다. 못 쓰면 조용히 넘어간다.
   // Local UI selection does not yet go to Gemini. Do not pretend profile sync succeeded.
   try{
     await initAudio();
@@ -239,12 +267,13 @@ $("onboarding-form").addEventListener("submit",async event=>{
     sessionId=data.session_id;
     showScreen("experience-screen");
     // FE1 Live 연결 (11/18): Live가 열리면 첫 인사도 Live가 말한다(speechSynthesis로 읽지 않는다).
-    if(await startLive(pendingLive,data))return;
+    if(await startLive(pendingLive,data)){showScreenNoteOnce();return;}
     // 여기부터는 Live를 못 열었을 때의 기존 방식 그대로.
     addMessage("docent",data.reply);
     rememberReply(data.reply);
     talkBtn.disabled=false;
     setStatus("Point the camera at an artwork and hold the talk button.");
+    showScreenNoteOnce(); // FE1 Live 연결 (11/18)
   }catch(error){
     pendingLive.close(); // FE1 Live 연결 (11/18)
     if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
@@ -336,6 +365,7 @@ $("end-visit").addEventListener("click",async()=>{
   $("end-visit").disabled=true;
   stopSpeaking();
   if(live){live.close();useHoldToTalk();} // FE1 Live 연결 (11/18): 마이크·사진 전송을 멈추고 WS를 닫는다
+  wakeLock.release(); // FE1 Live 연결 (11/18)
   if(recorder?.state==="recording")recorder.stop();
   if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
   video.srcObject=null;
