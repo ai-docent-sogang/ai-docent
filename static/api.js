@@ -31,6 +31,7 @@ export async function postTurn({ sessionId, audio, text, frame }) {
 }
 
 // 작품 ID와 질문 텍스트만 보내 답변을 받는다(텍스트 전용, 음성·사진 없음). 세션을 쓰지 않는다.
+// 2026-11-17: 화면에서는 부르지 않는다. FE2 UI는 모두 /api/turn을 쓴다(config.js 머리말 참고).
 // 돌려받는 값: { answer, artwork_id, artwork_title, status, source_url, latency_ms, model }
 // status: "ok" 정상 / "mock" 임시 답변 / "no_artwork" 자료 없는 작품 / "error" 답변 생성 실패.
 // 주의: no_artwork와 error도 HTTP 200이고 answer에 읽어 줄 문장이 들어 있다. 400은 질문이 빈 경우뿐이다.
