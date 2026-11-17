@@ -61,6 +61,7 @@ import binascii
 import json
 import os
 import re
+import unicodedata
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -309,6 +310,69 @@ def handsfree_config(profile):
     )
 
 
+# ── 받아쓰기로 비교 찾기 (11/18 실측: Live가 비교를 말하면서 report_comparison을 부르지 않은 턴이 있었다) ──
+ARTICLES = {"the", "a", "an"}
+SHORT_TITLE_CHARS = 10   # 이보다 짧거나 한 단어인 제목은 흔한 말과 겹칠 수 있어 작가 이름도 함께 나와야 인정한다
+
+
+def normalize_words(text):
+    """대소문자·악센트·따옴표·문장부호·관사 차이를 없앤 ' 단어 단어 ' 꼴(앞뒤 공백은 단어 경계용)."""
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch)).lower()
+    words = [w for w in re.sub(r"[^a-z0-9]+", " ", text).split() if w not in ARTICLES]
+    return " " + " ".join(words) + " "
+
+
+def title_variants(title):
+    """비교쌍 제목에서 관람객에게 말할 법한 이름들을 뽑는다.
+
+    예: "Hokusai Sketchbooks (Denshin kaishu: Hokusai manga), first volume"
+        → "Hokusai Sketchbooks", "Denshin kaishu", "Hokusai manga"
+        "South Wind, Clear Sky (Gaifū kaisei), also known as Red Fuji, from the series ..."
+        → "South Wind, Clear Sky", "Gaifū kaisei", "Red Fuji" (연작 이름은 그 작품이 아니므로 뺀다)
+    """
+    variants = [title.split("(")[0]]
+    for inner in re.findall(r"\(([^)]*)\)", title):
+        variants += inner.split(":")
+    aka = re.search(r"also known as (.+?)(?:,| from |$)", title)
+    if aka:
+        variants.append(aka.group(1))
+    out = []
+    for v in variants:
+        v = re.split(r",\s*(?:first|second|third) volume|\bfrom the series\b", v)[0]
+        norm = normalize_words(v)
+        if norm.strip() and norm not in out:
+            out.append(norm)
+    return out
+
+
+def artist_words(artist):
+    """작가 이름에서 알아볼 단어(4자 이상, Elder 같은 말 제외). "Pieter Bruegel the Elder (…)" → pieter, bruegel."""
+    name = normalize_words(artist.split("(")[0])
+    return [w for w in name.split() if len(w) >= 4 and w not in {"elder", "younger"}]
+
+
+def comparison_in_transcript(said, artwork_id):
+    """답변 받아쓰기에 지금 작품의 검증된 비교쌍 제목이 나오면 그 comparison_id(가장 먼저 나온 것).
+
+    다른 작품의 비교쌍은 보지 않는다. 짧은 제목은 작가 이름도 함께 나와야 한다.
+    """
+    text = normalize_words(said)
+    found = []
+    for cid, pair in verified_comparisons.items():
+        if pair["artwork_id"] != artwork_id:
+            continue
+        for variant in title_variants(pair["foreign_title"]):
+            at = text.find(variant)
+            if at < 0:
+                continue
+            short = len(variant.strip()) < SHORT_TITLE_CHARS or len(variant.split()) < 2
+            if short and not any(f" {w} " in text for w in artist_words(pair["foreign_artist"])):
+                continue
+            found.append((at, cid))
+    return min(found)[1] if found else ""
+
+
 def ranked_comparison_ids(artwork_id, profile, used_ids):
     """comparison_block이 적는 후보와 같은 순서의 comparison_id 목록.
 
@@ -378,7 +442,9 @@ async def live(ws: WebSocket):
              # 폰이 마지막으로 무언가 보낸 시각(죽은 연결 판단, handsfree)
              "last_input": time.monotonic(),
              # on_speech 정책: 들고 있는 최신 사진, 이 Gemini 연결에서 첫 사진을 넘겼는지
-             "latest_frame": None, "first_frame_sent": False, "turn_frame_sent": False}
+             "latest_frame": None, "first_frame_sent": False, "turn_frame_sent": False,
+             # 이번 턴에 report_comparison이 불렸는지(받아쓰기로 비교를 찾을지 정할 때 쓴다)
+             "comparison_called": False}
 
     async def send_frame(session, jpeg):
         await session.send_realtime_input(video=types.Blob(data=jpeg, mime_type="image/jpeg"))
@@ -408,9 +474,19 @@ async def live(ws: WebSocket):
         said = state["said"].strip()
         if not said:
             return
+        if mode == "handsfree" and not state["comparison_called"] and state["artwork_id"] in artworks:
+            # Live가 함수를 부르지 않고 비교를 말한 턴. 답에 지금 작품의 비교쌍 제목이 나오면 같은 처리를 한다.
+            cid = comparison_in_transcript(said, state["artwork_id"])
+            if cid and cid not in visit.used_comparison_ids:
+                print(f"[live] 함수 없이 말한 비교를 받아쓰기에서 찾음: {cid}")
+                state["comparison_id"] = cid
+                to_browser.put_nowait(("text", {
+                    "type": "comparison", "comparison_id": cid, "artwork_id": state["artwork_id"],
+                    "source": "transcript"}))
         visit.record_turn(state["heard"].strip(), SimpleNamespace(
             artwork_id=state["artwork_id"], comparison_id=state["comparison_id"], reply=said))
         state["heard"] = state["said"] = state["comparison_id"] = ""
+        state["comparison_called"] = False
 
     def answer_tool_call(call):
         """Live의 함수 호출 하나에 돌려줄 결과를 만들고, 폰에 알릴 것이 있으면 줄에 넣는다."""
@@ -436,6 +512,7 @@ async def live(ws: WebSocket):
                 "comparison_ids": ranked_comparison_ids(artwork_id, profile, used),
             }
         if call.name == "report_comparison":
+            state["comparison_called"] = True   # 이 턴은 받아쓰기로 비교를 찾지 않는다
             comparison_id = str(args.get("comparison_id") or "")
             pair = verified_comparisons.get(comparison_id)
             if pair is None or pair["artwork_id"] != state["artwork_id"]:
@@ -446,7 +523,8 @@ async def live(ws: WebSocket):
                                  "Do not make this comparison."}
             state["comparison_id"] = comparison_id
             to_browser.put_nowait(("text", {
-                "type": "comparison", "comparison_id": comparison_id, "artwork_id": pair["artwork_id"]}))
+                "type": "comparison", "comparison_id": comparison_id, "artwork_id": pair["artwork_id"],
+                "source": "function"}))
             return {"ok": True, "comparison_id": comparison_id,
                     "foreign_painting": f"{pair['foreign_title']} by {pair['foreign_artist']} "
                                         f"({pair['foreign_date']}, {pair['foreign_collection']})",

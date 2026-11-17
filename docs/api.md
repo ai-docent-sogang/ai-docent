@@ -122,7 +122,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | 끼어들기 (handsfree) | `{"type": "interrupted"}` | **재생 중인 소리를 즉시 멈춥니다**(관람객이 말을 끊음). 뒤이어 `turn_complete`가 옵니다 |
 | 턴 끝 | `{"type": "turn_complete"}` | 다음 말풍선 준비(push는 버튼 다시 활성화) |
 | 작품 알아봄 (handsfree) | `{"type": "artwork", "artwork_id": "KHD_SSIREUM", "artwork_title": "..."}` | 인식 칩·요약에 기록. Live가 함수를 부를 때마다 오므로 같은 작품이 거듭 올 수 있습니다 |
-| 비교 꺼냄 (handsfree) | `{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": "KHD_SSIREUM"}` | 요약·상세의 비교에 누적 |
+| 비교 꺼냄 (handsfree) | `{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": "KHD_SSIREUM", "source": "function"}` | 요약·상세의 비교에 누적. `source`는 `function`(Live가 함수로 알림) 또는 `transcript`(함수 없이 말한 비교를 서버가 답변 받아쓰기에서 찾음) |
 | 재연결 중 | `{"type": "reconnecting", "kept_conversation": true/false}` | "잠시만요" 안내 |
 | 다시 붙음 | `{"type": "reconnected", "kept_conversation": true/false, ...ready와 같은 필드}` | 대화 재개 |
 | 오류 | `{"type": "error", "message": "..."}` | 안내 문구. AIVY 화면은 기존 `/api/turn` 버튼 방식으로 되돌아갑니다 |
@@ -156,6 +156,7 @@ handsfree에서 서버가 하는 일 (형식에 영향을 주는 것만):
 
 - **연결되면 Live가 먼저** 짧게 인사하고 어디서 왔는지, 어떤 미술을 좋아하는지 묻습니다. 폰은 브라우저 음성으로 따로 인사하지 않습니다(목소리 하나로 통일).
 - Live는 함수 두 개를 부릅니다. `report_current_artwork(artwork_id)`(11점 ID 또는 `"unknown"`)를 부르면 서버가 그 작품의 확인된 사실과 비교 후보를 돌려주고 폰에 `artwork`를 보냅니다. `"unknown"`이면 `artwork`를 보내지 않고 Live가 관람객에게 그림을 비춰 달라고 합니다. `report_comparison(comparison_id)`는 지금 작품의 검증된 비교쌍만 받고, 받으면 폰에 `comparison`을 보냅니다.
+- Live가 비교를 말하면서 `report_comparison`을 부르지 않는 턴이 있습니다(11/18 실측). 그래서 턴이 끝날 때 그 턴에 함수가 없었으면, 답변 받아쓰기에 **지금 작품의** 검증된 비교쌍 제목(대소문자·따옴표·관사·악센트 무시, 괄호 안 다른 이름과 "also known as" 이름 포함)이 나오는지 봅니다. 나오면 함수로 온 것과 똑같이 누적·기록하고 `comparison`(`"source": "transcript"`)을 보냅니다. 10자보다 짧거나 한 단어인 제목은 작가 이름도 함께 나와야 인정합니다. 이미 누적된 비교는 다시 보내지 않습니다.
 - 턴이 끝나면 `session.record_turn`에 들은 말(글 질문이면 그 원문), 지금 작품, 이번 턴에 보고된 비교를 남깁니다. 그래서 handsfree 경로에서는 요약 화면의 비교 수가 채워집니다(push는 여전히 0).
 - 사진과 소리는 Gemini에 넘기기만 하고 저장하지 않습니다.
 
