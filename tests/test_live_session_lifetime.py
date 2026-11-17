@@ -16,9 +16,11 @@
 실행: PYTHONPATH=. uv run python tests/test_live_session_lifetime.py
 """
 import asyncio
+import base64
 import json
 import sys
 import threading
+import time
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -34,11 +36,12 @@ CLOSED_1008 = APIError(1008, {"error": {"code": 1008, "message": "Session closed
 
 # ── Gemini 자리에 놓는 가짜 ───────────────────────────────────────────────
 def msg(*, handle=None, resumable=None, go_away=None, audio=None, said=None,
-        heard=None, turn_complete=False):
-    """중계가 보는 모양만 맞춘 서버 메시지 한 개."""
+        heard=None, turn_complete=False, interrupted=False, calls=None):
+    """중계가 보는 모양만 맞춘 서버 메시지 한 개. calls는 [(이름, 인자), ...] 함수 호출."""
     content = None
-    if audio or said or heard or turn_complete:
+    if audio or said or heard or turn_complete or interrupted:
         content = SimpleNamespace(
+            interrupted=interrupted or None,
             input_transcription=SimpleNamespace(text=heard) if heard else None,
             output_transcription=SimpleNamespace(text=said) if said else None,
             model_turn=SimpleNamespace(parts=[SimpleNamespace(
@@ -51,7 +54,17 @@ def msg(*, handle=None, resumable=None, go_away=None, audio=None, said=None,
             if handle is not None else None),
         go_away=SimpleNamespace(time_left="4s") if go_away else None,
         server_content=content,
+        tool_call=SimpleNamespace(function_calls=[
+            SimpleNamespace(id=f"call-{i}", name=name, args=args) for i, (name, args) in enumerate(calls)
+        ]) if calls else None,
     )
+
+
+class WaitClientContent:
+    """send_client_content가 count번 불린 뒤에야 내보내는 턴."""
+
+    def __init__(self, count, messages):
+        self.count, self.messages = count, messages
 
 
 class FakeSession:
@@ -59,10 +72,18 @@ class FakeSession:
 
     def __init__(self, turns):
         self.turns = list(turns)
-        self.sent = []
+        self.sent = []            # send_realtime_input으로 받은 것
+        self.client_content = []  # send_client_content로 받은 것(글 질문, 인사 신호)
+        self.tool_responses = []  # send_tool_response로 받은 함수 결과
 
     async def send_realtime_input(self, **kw):
         self.sent.append(kw)
+
+    async def send_client_content(self, **kw):
+        self.client_content.append(kw)
+
+    async def send_tool_response(self, *, function_responses):
+        self.tool_responses.extend(function_responses)
 
     async def receive(self):
         if not self.turns:
@@ -71,6 +92,11 @@ class FakeSession:
         turn = self.turns.pop(0)
         if isinstance(turn, BaseException):
             raise turn
+        if isinstance(turn, WaitClientContent):
+            # 폰이 글을 보낼 때까지 이 턴을 내보내지 않는다(실제 Gemini도 질문을 받고서 답한다).
+            while len(self.client_content) < turn.count:
+                await asyncio.sleep(0.01)
+            turn = turn.messages
         for m in turn:
             await asyncio.sleep(0)
             yield m
@@ -84,12 +110,14 @@ class FakeClient:
         self.handles = []      # 연결할 때마다 쓴 재개 핸들
         self.compression = []  # 연결할 때마다 쓴 컨텍스트 압축 설정
         self.instructions = []  # 연결할 때마다 넣은 시스템 지시문
+        self.configs = []      # 연결할 때마다 쓴 설정 전체
         self.aio = SimpleNamespace(live=SimpleNamespace(connect=self._connect))
 
     def _connect(self, *, model, config):
         self.handles.append(config.session_resumption.handle if config.session_resumption else None)
         self.compression.append(config.context_window_compression)
         self.instructions.append(config.system_instruction)
+        self.configs.append(config)
         nxt = self.connections.pop(0) if self.connections else []
         client = self
 
@@ -105,8 +133,11 @@ class FakeClient:
         return Ctx()
 
 
-def run(connections, expect, timeout=10, profile=None):
+def run(connections, expect, timeout=10, profile=None, first=None, after_ready=(), linger=0.0):
     """가짜 Gemini를 끼운 중계에 폰처럼 붙어 메시지 expect개를 받는다. (받은 것, 가짜 클라이언트).
+
+    first: 첫 메시지(없으면 push 모드로 작품 하나). after_ready: ready를 받은 뒤 폰이 보낼 것
+    (텍스트는 dict, 바이너리는 bytes). linger: 다 받은 뒤 닫기 전에 기다리는 시간(보낸 것이 처리되게).
 
     받는 일을 별도 실 에서 한다. 중계는 관람객이 있는 동안 끝나지 않으므로, 볼 것을 다 받으면
     우리가 연결을 닫는다.
@@ -118,7 +149,7 @@ def run(connections, expect, timeout=10, profile=None):
 
     with TestClient(server_app) as c:
         with c.websocket_connect("/ws/live") as ws:
-            first = {"artwork_id": ARTWORK}
+            first = dict(first) if first is not None else {"artwork_id": ARTWORK}
             if profile is not None:
                 first["profile"] = profile
             ws.send_text(json.dumps(first))
@@ -129,6 +160,12 @@ def run(connections, expect, timeout=10, profile=None):
                         m = ws.receive()
                         if m.get("text"):
                             got.append(json.loads(m["text"]))
+                            if got[-1].get("type") == "ready":
+                                for out in after_ready:
+                                    if isinstance(out, bytes):
+                                        ws.send_bytes(out)
+                                    else:
+                                        ws.send_text(json.dumps(out))
                         elif m.get("bytes") is not None:
                             got.append(("bytes", m["bytes"]))
                         elif m.get("type") == "websocket.close":
@@ -141,6 +178,8 @@ def run(connections, expect, timeout=10, profile=None):
             threading.Thread(target=reader, daemon=True).start()
             if not done.wait(timeout):
                 print(f"  (경고: {timeout}초 안에 {expect}개를 못 받았다. 받은 것 {len(got)}개)")
+            if linger:
+                time.sleep(linger)
             ws.close()
     return got, fake
 
@@ -263,6 +302,126 @@ check("작품 사실이 들어간다", "FACTS (the only facts you may use)" in i
 check("프로필이 들어간다", "VISITOR PROFILE" in instruction and "France" in instruction)
 check("비교 후보 칸이 들어간다", "COMPARISON OPTIONS" in instruction)
 check("요청-응답용 규칙을 쓰지 않는다", "Do not greet or welcome the visitor" not in instruction)
+
+# ── 9. 목소리 설정 (11/18 추가) ────────────────────────────────────────────
+print("9. 목소리(LIVE_VOICE, 없으면 Kore)")
+got, fake = run([[[msg(heard="hi", turn_complete=True)]]], expect=3)
+voice = fake.configs[0].speech_config.voice_config.prebuilt_voice_config.voice_name
+check("push 모드 설정에 목소리가 들어간다", voice == relay.LIVE_VOICE, str(voice))
+check("ready에 목소리 이름이 온다", got[0].get("voice") == relay.LIVE_VOICE, str(got[0]))
+check("push 모드 ready에 mode가 push로 온다", got[0].get("mode") == "push", str(got[0]))
+check("push 모드는 먼저 말을 걸지 않는다", fake.session.client_content == [])
+
+# ── 10~13. handsfree 모드 (11/18 추가) ───────────────────────────────────
+HANDSFREE = {"mode": "handsfree", "profile": {"country": "France", "age_group": "adult", "language": "en"}}
+
+print("10. handsfree 연결 설정·인사")
+got, fake = run([[[msg(said="Hello! Where are you from?", turn_complete=True)]]], expect=3, first=HANDSFREE)
+cfg = fake.configs[0]
+aad = cfg.realtime_input_config.automatic_activity_detection
+check("작품 없이도 연결된다(ready)", got[0].get("type") == "ready" and got[0].get("mode") == "handsfree", str(got[0]))
+check("자동 음성 감지를 켠다", aad is not None and aad.disabled is False, str(aad))
+names = [f.name for t in cfg.tools for f in t.function_declarations]
+check("함수 두 개를 선언한다", names == ["report_current_artwork", "report_comparison"], str(names))
+enum = cfg.tools[0].function_declarations[0].parameters.properties["artwork_id"].enum
+check("작품 함수 값은 11개 ID + unknown", len(enum) == 12 and "unknown" in enum and ARTWORK in enum, str(enum))
+check("압축·재개 설정을 그대로 쓴다(영상이 섞이면 압축 없이 2분)",
+      cfg.context_window_compression is not None and cfg.session_resumption is not None)
+check("같은 목소리를 쓴다", cfg.speech_config.voice_config.prebuilt_voice_config.voice_name == relay.LIVE_VOICE)
+hf_instruction = fake.instructions[0]
+check("지시문에 BE1 규칙·프로필·11점 후보·함수 규칙이 들어간다",
+      "Fact rules" in hf_instruction and "VISITOR PROFILE" in hf_instruction and "France" in hf_instruction
+      and "EXHIBITION" in hf_instruction and "report_current_artwork" in hf_instruction, hf_instruction[:80])
+check("연결되면 Live가 먼저 인사하게 신호를 보낸다",
+      len(fake.session.client_content) == 1
+      and relay.GREETING_CUE in fake.session.client_content[0]["turns"].parts[0].text)
+greet_visit = sessions.get_session(got[0]["session_id"])
+check("인사 신호를 관람객 말로 기록하지 않는다",
+      greet_visit.history and greet_visit.history[-1]["visitor"] == "", str(greet_visit.history))
+
+print("11. handsfree 소리·사진·글 전달")
+jpeg = b"\xff\xd8\xff\xe0fake-jpeg"
+got, fake = run([[[msg(said="hi", turn_complete=True)]]], expect=3, first=HANDSFREE, linger=0.5, after_ready=[
+    b"\x00\x00" * 1600,
+    {"type": "frame", "jpeg": base64.b64encode(jpeg).decode()},
+    {"type": "frame", "jpeg": "%%%not-base64%%%"},
+    {"type": "text", "text": "Who painted this?"},
+    {"type": "speech_start"},   # push 신호는 handsfree에서 무시한다
+])
+sent = fake.session.sent
+videos = [s["video"] for s in sent if "video" in s]
+audios = [s["audio"] for s in sent if "audio" in s]
+check("마이크 PCM을 그대로 보낸다(앞뒤 무음을 덧붙이지 않는다)",
+      len(audios) == 1 and audios[0].data == b"\x00\x00" * 1600, f"{len(audios)}개")
+check("사진은 image/jpeg로 보낸다", len(videos) == 1 and videos[0].data == jpeg
+      and videos[0].mime_type == "image/jpeg", str(videos))
+check("깨진 사진은 버린다", len(videos) == 1)
+check("push 신호(activity_start)를 보내지 않는다", not any("activity_start" in s for s in sent), str(sent))
+texts = [c["turns"].parts[0].text for c in fake.session.client_content]
+check("글 질문은 send_client_content로 보낸다", texts[1:] == ["Who painted this?"], str(texts))
+
+print("12. handsfree 끼어들기")
+got, fake = run([[[msg(audio=b"\x01"), msg(said="The paint"), msg(interrupted=True), msg(turn_complete=True)]]],
+                expect=5, first=HANDSFREE)   # ready, 음성, said, interrupted, turn_complete
+t = types_of(got)
+check("interrupted를 폰에 보낸다", "interrupted" in t, str(t))
+check("interrupted 뒤에 turn_complete가 온다", "interrupted" in t and t.index("interrupted") < t.index("turn_complete"), str(t))
+
+print("13. handsfree 함수 호출")
+got, fake = run([[
+    [msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])],
+    [msg(calls=[("report_comparison", {"comparison_id": "C_INWANG_CEZANNE"})])],   # 다른 작품의 비교
+    [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
+    [msg(heard="Can you compare it?"), msg(said="Think of Bruegel's Peasant Wedding."),
+     msg(turn_complete=True)],
+]], expect=6, first=HANDSFREE, linger=0.3)
+# ready, artwork, comparison, heard, said, turn_complete
+responses = fake.session.tool_responses
+check("함수마다 결과를 돌려준다(id·이름 일치)",
+      [(r.id, r.name) for r in responses] == [("call-0", "report_current_artwork"),
+                                              ("call-0", "report_comparison"), ("call-0", "report_comparison")],
+      str([(r.id, r.name) for r in responses]))
+art_result = responses[0].response
+check("작품 결과에 확인된 사실이 들어간다", "FACTS (the only facts you may use)" in art_result["artwork"])
+check("작품 결과에 비교 후보와 그 ID가 들어간다",
+      "COMPARISON OPTIONS" in art_result["comparison_options"]
+      and set(art_result["comparison_ids"]) == {"C_KHD_BRUEGEL", "C_KHD_HOKUSAI_MANGA"}, str(art_result.get("comparison_ids")))
+check("다른 작품의 비교쌍은 거절한다", responses[1].response.get("ok") is False, str(responses[1].response))
+check("지금 작품의 검증된 비교쌍은 받는다", responses[2].response.get("ok") is True
+      and responses[2].response.get("similarities"), str(responses[2].response)[:120])
+arts = [g for g in got if isinstance(g, dict) and g.get("type") == "artwork"]
+comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
+check("폰에 artwork를 보낸다", arts and arts[0]["artwork_id"] == ARTWORK and arts[0]["artwork_title"], str(arts))
+check("폰에 comparison은 받은 것 하나만 보낸다",
+      comps == [{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": ARTWORK}], str(comps))
+visit = sessions.get_session(got[0]["session_id"])
+check("record_turn에 작품과 comparison_id가 들어간다",
+      visit.seen_artwork_ids == [ARTWORK] and visit.used_comparison_ids == ["C_KHD_BRUEGEL"],
+      f"{visit.seen_artwork_ids} {visit.used_comparison_ids}")
+check("대화 기록에 질문과 답이 남는다",
+      visit.history[-1] == {"visitor": "Can you compare it?", "docent": "Think of Bruegel's Peasant Wedding."},
+      str(visit.history[-1]))
+
+print("14. handsfree unknown 작품")
+got, fake = run([[[msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])],
+                  [msg(said="Could you point the camera at the painting?", turn_complete=True)]]],
+                expect=3, first=HANDSFREE, linger=0.3)
+r = fake.session.tool_responses[0].response
+check("unknown이면 사진을 비춰 달라는 지시를 돌려준다", r["artwork_id"] == "unknown" and "camera" in r["instruction"], str(r))
+check("unknown이면 artwork를 보내지 않는다", "artwork" not in types_of(got), str(types_of(got)))
+
+print("15. handsfree 글 질문(화면이 말풍선을 직접 그린다)")
+# 인사 턴 뒤에 글 질문을 보내고, 가짜 Gemini가 다음 턴(답)을 내보내게 한다.
+got, fake = run([[[msg(said="Hello!", turn_complete=True)],
+                  WaitClientContent(2, [msg(said="Kim Hong-do painted it.", turn_complete=True)])]],
+                expect=5, first=HANDSFREE, linger=0.3,
+                after_ready=[{"type": "text", "text": "Who painted this?"}])
+t = types_of(got)
+check("글 질문에는 heard를 보내지 않는다", "heard" not in t, str(t))
+visit = sessions.get_session(got[0]["session_id"])
+check("record_turn의 관람객 말에 글 질문 원문이 들어간다",
+      any(h == {"visitor": "Who painted this?", "docent": "Kim Hong-do painted it."} for h in visit.history),
+      str(visit.history))
 
 print()
 if failures:
