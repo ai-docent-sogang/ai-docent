@@ -83,6 +83,12 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 임시 답변 모드: `.env`에 `ASK_MOCK=1`을 넣고 서버를 다시 켜면 Gemini 없이 `status: "mock"` 답변을 돌려줍니다.
 
+## GET `/live/status` — Live 운영 상태
+
+현재 연결 수(`active_visits`), 관람별 현재 작품·무입력 시간·Gemini 연결 여부·재연결 횟수(`visits`), 저장된 재개 정보 수(`saved_resumes`), 모델·목소리·사진 정책을 반환합니다. 관람별 `session_id`는 앞 4자만 표시하며 대화 원문과 재개 핸들은 포함하지 않습니다. 인증 없는 시연 서버의 운영 확인용입니다.
+
+관람 기억과 재개 정보는 연결 종료 후 2시간 동안 유지하며, 60초 주기로 비활성 항목을 정리합니다. 접속 중인 관람은 보호합니다. `POST /api/session/{session_id}/end`는 연결과 재개 정보까지 즉시 정리합니다. 명시적 종료 시 WebSocket close code는 `1000`, reason은 `visit ended`입니다.
+
 ## WS `/ws/live` — 실시간 음성 (Gemini Live API, 11/17 추가 · 11/18 handsfree 추가)
 
 > **FE1 제안, BE1 확인 전(11/18).** 이 절을 11/18 저녁 `server/live.py`·`static/live_conversation.js`와 하나씩 대조해 고쳤습니다. 받는 값 표의 `artwork`·`comparison` 칸, `reconnecting`, 설정 설명, 속 글 로그 문장이 바뀌었습니다. BE1(인우)이 확인하면 이 알림 줄을 지웁니다.
@@ -189,7 +195,7 @@ push에서 형식에 영향을 주는 약속:
 | 비교쌍 사용 기록 (push) | push는 `comparison_id`를 빈 값으로 남깁니다. handsfree는 함수 호출로 받습니다 |
 | 에코 처리 | 서버에서 다루지 않습니다. handsfree는 마이크를 계속 열어 두므로 스피커 소리를 마이크가 다시 들으면 Live가 자기 말에 끼어들 수 있습니다(이어폰 또는 브라우저 echoCancellation 전제) |
 | 대화 중 프로필 반영 | 관람객이 말로 출신을 알려 줘도 비교 후보의 순서는 첫 메시지의 `profile`로 정합니다 |
-| 여러 관람객 동시 접속 | 단일 세션입니다. 인증도 없습니다(11/13 결정, 12/1 범위) |
+| 여러 관람객 동시 접속 | 관람별로 상태를 분리합니다. 가짜 Gemini로 중계의 동시 관람·종료 분리를, 실제 Gemini로 SDK 연결 3개와 짧은 음성 응답을 확인했습니다. 연속 음성·사진 부하와 실기기 동시 검증, 인증은 남아 있습니다 |
 | 10분 넘는 연결 | 세션 수명 처리는 모의 시험까지만 확인했고 실기기 확인은 아직입니다 |
 | `report_no_source` · `report_out_of_scope` (handsfree) | BE1 설계([`docs/BE1_함수호출_설계.md`](BE1_함수호출_설계.md))에는 있지만 `server/live.py`가 선언하지 않습니다. 못 답한 질문은 폰으로도 관람 기록으로도 나가지 않습니다 — 관람 기록의 `question.outcome`이 빈 값인 이유입니다 |
 | 질문 유형 라벨 (handsfree) | 관람 기록의 `question.label`이 빈 값입니다. 라벨 체계는 FE3가 정합니다 |

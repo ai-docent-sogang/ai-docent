@@ -8,6 +8,7 @@ import time
 from types import SimpleNamespace
 
 from .ask import build_artwork_context
+from . import session as sessions
 from .content import rank_comparisons
 from .live_config import UNKNOWN
 from .live_context import MAX_COMPARISON_OPTIONS, REGION_TAGS, comparison_block, home_of
@@ -15,13 +16,7 @@ from .live_transcript import comparison_in_transcript
 
 
 def comparison_display(comparison_id, verified_comparisons):
-    """비교 하나를 화면이 그리는 데 필요한 값만. 없는 ID면 빈 dict.
-
-    화면(static/app.js)이 같은 값을 손으로 베껴 두고 있었는데, 예원님이 `data/comparisons.csv`를
-    늘릴 때마다 어긋났다(11/18에 7→20점이 되면서 14개가 요약에서 사라지고 ID 하나는 죽었다).
-    베낀 목록을 지우려고 서버가 보내 준다. angle·similarities·differences는 보내지 않는다 —
-    그것은 Gemini에게 주는 설명 재료이고 화면은 쓰지 않는다.
-    """
+    """화면에 필요한 비교 작품 제목·작가·소장처·출처 URL을 반환한다."""
     pair = verified_comparisons.get(comparison_id)
     if pair is None:
         return {}
@@ -30,15 +25,8 @@ def comparison_display(comparison_id, verified_comparisons):
 
 
 def ranked_comparison_ids(artwork_id, profile, used_ids, verified_comparisons):
-    """comparison_block이 적는 후보와 같은 순서의 comparison_id 목록.
-
-    comparison_block(BE1)의 글에는 ID가 없어서 모델이 report_comparison에 넣을 값을 모른다.
-    BE1 파일을 고치지 않으려고 같은 정렬(rank_comparisons + REGION_TAGS + 최대 개수)을 여기서 다시 부른다.
-    live_context.comparison_block의 정렬을 바꾸면 여기도 함께 고친다.
-    """
-    # BE1의 home_of를 쓴다. 전에는 country만 읽어서, 프로필에 region만 들어오면 BE1의 글 순서와
-    # 이 ID 순서가 어긋났다(11/18 확인: region=japan이면 글은 Sumo가 1번, ID는 Bruegel이 1번).
-    # 모델은 글의 "option 1"을 보고 같은 자리의 ID를 넣으므로, 말한 비교와 기록된 비교가 달라진다.
+    """comparison_block과 같은 순서의 비교 ID를 반환한다. 정렬 변경 시 두 함수를 함께 수정한다."""
+    # comparison_block과 같은 지역 해석·정렬을 사용해 후보 설명과 ID 순서를 맞춘다.
     country = home_of(profile).lower()
     ranking_profile = {"country": country, "familiar_art": REGION_TAGS.get(country, [])}
     ranked = rank_comparisons(list(verified_comparisons.values()), artwork_id, ranking_profile,
@@ -62,12 +50,7 @@ class LiveConversation:
         self.vlog = vlog
         # 느린 폰 전송이 Gemini 읽기를 막지 않게 소켓 중계가 이 큐를 따로 비운다.
         self.to_browser = asyncio.Queue()
-        # 지금 연결된 Live 세션과 재개 핸들. 재연결하면 session만 바뀌고 폰과의 연결은 그대로 둔다.
-        #   turn_open: 답변을 내보내는 중인지. 답변 도중에 연결이 옮겨 가면 폰은 turn_complete를
-        #              받지 못해 버튼이 잠긴 채로 남는다. 그래서 옮기기 전에 턴을 닫아 준다.
-        #   heard/said: 이번 턴의 질문과 답을 모아 둔다. 턴이 끝나면 관람 기억에 넣는다.
-        #   artwork_id: 지금 보는 작품. push는 연결할 때 고정, handsfree는 report_current_artwork로 바뀐다.
-        #   comparison_id: 이번 턴에 report_comparison으로 보고된 비교(handsfree만). 기록하면 비운다.
+        # 연결별 상태. 재연결 시 Gemini 세션만 바꾸고 현재 작품과 턴 정보를 유지한다.
         self.state = {"session": None, "handle": saved["handle"] if saved else None, "turn_open": False,
                  "heard": "", "said": "",
                  "artwork_id": artwork_id, "comparison_id": "",
@@ -81,10 +64,7 @@ class LiveConversation:
                  "said_hold": "", "said_leak": "",
                  # 인사 턴이 아직 끝나지 않았다(handsfree). 그동안 사진은 들고만 있는다.
                  "opening_turn": False,
-                 # 관람 기록용. heard_at: 이번 턴에 질문이 들어온 마지막 시각(받아쓰기 조각 또는 글).
-                 # first_audio_at: 이번 턴의 첫 답변 소리가 나간 시각. 둘의 차이가 first_audio_ms다.
-                 # channel: 이번 턴을 글로 물었는지 말로 물었는지. usage: 이번 턴의 마지막 사용량.
-                 # usage_seen: 지금까지 Gemini가 알려 준 누적 사용량(11/18 실측으로 누적임을 확인).
+                 # 질문/첫 음성 시각과 채널, 현재 연결의 누적 사용량을 추적한다.
                  "heard_at": None, "first_audio_at": None, "channel": "", "usage": None,
                  "usage_seen": {}, "speech_end_at": None}
 
@@ -96,25 +76,19 @@ class LiveConversation:
 
     def save_resume(self):
         """재개 핸들·지금 작품을 저장소에 남긴다. 폰 WS가 끊겨도 다음 연결이 이어 쓴다."""
+        if sessions.get_session(self.visit.session_id) is not self.visit:
+            return  # END VISIT 이후 늦게 도착한 Gemini 메시지가 기억을 되살리지 않게 한다.
         if self.state["handle"] or self.state["artwork_id"]:
             self.resume_store[self.visit.session_id] = {
                 "handle": self.state["handle"], "artwork_id": self.state["artwork_id"],
                 "updated": time.time()}
 
     def first_audio_ms(self):
-        """관람객이 말을 멈춘 뒤 첫 답변 소리가 나갈 때까지의 밀리초. 못 재면 -1.
+        """질문 종료 추정 시각부터 첫 음성까지의 간격(ms). 측정 불가 시 -1.
 
-        기준은 Gemini가 "말이 끝났다"고 알려 준 시각(voice_activity)이고, 그 신호가 없으면
-        이번 턴에 마지막으로 받은 받아쓰기 조각의 시각을 쓴다. 받아쓰기는 늦게 오므로 답변이
-        그보다 먼저 시작되는 일이 있다 — 11/18 실측에서 그렇게 해서 123ms라는 거짓 값이 나왔다.
-        그런 턴은 잴 수 없는 것으로 보고 -1을 적는다. 작은 수를 적으면 평균이 거짓이 된다.
-
-        **이 숫자는 관람객이 기다린 시간보다 작다.** 11/18 실측에서 voice_activity 신호는
-        한 번도 오지 않았고(두 번의 왕복, 0건), 그래서 늘 받아쓰기를 기준으로 쓴다. 같은 턴을
-        폰 쪽에서 재면 943ms/1646ms인 것이 1932ms/2481ms였다 — 약 1초 낮게 나온다. 턴 사이를
-        견주는 데는 쓸 수 있지만, "관람객이 몇 초 기다렸다"로 말하면 안 된다. 제대로 재려면
-        voice_activity가 오게 되거나(Google 쪽), 폰이 말이 끝난 시각을 보내 줘야 한다.
-        """
+발화 종료 신호가 없으면 마지막 받아쓰기 시각을 사용한다. 이 값은 실제 대기 시간보다 짧다.
+받아쓰기가 늦게 도착해 간격이 300ms 미만이면 측정값을 버린다.
+"""
         audio_at = self.state["first_audio_at"]
         base = self.state["speech_end_at"] or self.state["heard_at"]
         if not base or not audio_at:
@@ -127,11 +101,7 @@ class LiveConversation:
         return gap_ms
 
     def remember_turn(self):
-        """이번 턴을 관람 기억에 넣는다. BE1의 session.record_turn을 부르기만 한다.
-
-        push는 comparison_id가 늘 빈 값이다(음성 답에서 어떤 비교를 썼는지 알 수 없다. 추측하지 않는다).
-        handsfree는 이번 턴에 Live가 report_comparison으로 보고한 값을 넘긴다.
-        """
+        """완료된 답변과 작품·비교 정보를 관람 기억에 반영하고 질문 횟수를 기록한다."""
         said = self.state["said"].strip()
         if not said:
             return
@@ -149,9 +119,7 @@ class LiveConversation:
                                 via="transcript")
         self.visit.record_turn(self.state["heard"].strip(), SimpleNamespace(
             artwork_id=self.state["artwork_id"], comparison_id=self.state["comparison_id"], reply=said))
-        # 관람 기록: 질문 한 번. 글자는 넣지 않는다(기록 모듈이 거부한다).
-        # 관람객이 아무 말도 하지 않은 턴(연결 직후 인사)은 질문으로 세지 않는다.
-        # label·outcome은 아직 빈 값이다 — 라벨 체계(FE3)와 no_source 판정(BE1)을 정해야 채운다.
+        # 인사 턴은 질문으로 세지 않는다. label·outcome은 FE3·BE1 규칙 확정 후 채운다.
         if self.state["heard"].strip():
             self.vlog.event("question", artwork_id=self.state["artwork_id"],
                             channel=self.state["channel"] or "voice", label="", outcome="",
@@ -179,8 +147,7 @@ class LiveConversation:
             used = list(self.visit.used_comparison_ids)
             if self.state["comparison_id"]:
                 used.append(self.state["comparison_id"])
-            # 화면이 작품 목록을 베껴 두지 않게 보여 줄 값을 같이 보낸다(11/18). 베낀 목록은
-            # 예원님이 CSV를 늘릴 때마다 어긋났다 — 하루에 두 번 났다.
+            # 화면 표시 정보도 콘텐츠 목록에서 제공한다.
             self.to_browser.put_nowait(("text", {
                 "type": "artwork", "artwork_id": artwork_id, "artwork_title": found["title_en"],
                 "artist": found.get("artist", "")}))

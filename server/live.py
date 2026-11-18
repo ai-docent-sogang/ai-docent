@@ -1,60 +1,11 @@
-"""폰 ↔ 우리 서버 ↔ Gemini Live 음성 중계. 운영 서버의 `/ws/live`에 붙는다.
+"""Gemini Live WebSocket 중계. 담당: FE1.
 
-담당: FE1
-같이 보는 파일: live_config.py (설정), live_transcript.py (자막),
-              live_conversation.py (턴·작품·비교 처리),
-              live_context.py (지시문 조각, BE1), prompts.py (LIVE_INSTRUCTION, BE1),
-              session.py (관람 기억, BE1), ask.py (build_artwork_context, BE1),
-              content.py (작품·비교쌍, BE2), docs/api.md (WS 형식),
-              tools/fake_browser_live.py (실제 Gemini로 하는 확인),
-              tools/live_frame_recognition.py (Live + 함수 호출 + 사진을 처음 돌려 본 도구),
-              tests/test_live_session_lifetime.py (가짜 Gemini로 하는 시험)
+push는 버튼으로 발화 경계를 전달하고, handsfree는 연속 음성·사진과 자동 발화 감지를 사용한다.
+폰 재접속과 Gemini 연결 교체 시 관람 기억과 재개 핸들을 유지한다.
+API 키는 서버에서만 사용하며 음성·프레임은 파일에 저장하지 않는다.
 
-왜 중계가 필요한가:
-    AGENTS.md는 클라이언트 코드에 API 키를 넣지 못하게 한다. 그래서 폰 브라우저가 Gemini Live에
-    직접 붙을 수 없고, 우리 서버가 가운데서 음성을 넘겨주어야 한다.
-
-두 가지 모드(첫 메시지의 "mode"로 고른다, 11/18 T1·T2 계약):
-    push(기본, `/live` 시험 페이지):
-        버튼을 누르는 동안만 소리를 받는다. 자동 음성 감지를 끄고 speech_start·speech_end로
-        말의 경계를 알린다. 연결할 때 받은 작품 한 점으로 고정하고 지시문은 BE1의
-        build_live_instruction을 그대로 쓴다. 11/17 동작 그대로다.
-    handsfree(AIVY 화면, 11/18 추가):
-        버튼 없이 사람과 말하듯 대화한다.
-        - 폰이 마이크 PCM을 쉬지 않고 보내고, Gemini의 자동 음성 감지가 말의 시작·끝을 판단한다.
-          관람객이 답을 끊으면 Gemini가 interrupted를 주고, 우리는 폰에 그대로 알린다(재생 멈춤).
-        - 폰이 3초마다 카메라 사진을 보낸다. 작품은 연결할 때 정하지 않고 Live가 사진으로 알아본다.
-        - Live가 함수 두 개를 부른다. report_current_artwork(어느 작품인지) → 우리는 그 작품의
-          확인된 사실과 비교 후보를 함수 결과로 돌려준다. report_comparison(어느 비교를 꺼내는지)
-          → 우리는 그 비교쌍의 내용을 돌려주고 관람 기억에 남긴다. 그래서 push 모드에서 빈 값이던
-          comparison_id가 handsfree에서는 채워진다.
-        - 연결되면 Live가 먼저 짧게 인사하고 어디서 왔는지, 어떤 미술을 좋아하는지 묻는다.
-
-폰이 다시 붙을 때(11/18 오후, 스마트글라스·폰 화면 꺼짐 대비):
-    폰 WS가 끊겨도 Gemini 재개 핸들과 지금 작품을 session_id별로 이 모듈의 저장소(resume_store)에
-    남겨 둔다. 폰이 같은 session_id와 "resume": true로 다시 붙으면 그 핸들로 Gemini 대화를 잇고
-    인사하지 않는다(ready.resumed=true). 핸들이 없거나 2시간이 지났거나 거부되면 새 대화로 시작하되
-    처음 인사 대신 "다시 연결됐다"고 짧게 말하고, 저장된 작품의 사실을 넘겨 이어 말하게 한다
-    (ready.resumed=false). 같은 session_id로 WS가 둘 붙으면 앞의 것을 닫는다.
-    저장소는 서버 메모리에만 있다(서버를 다시 켜면 사라진다. 대화 내용은 Gemini 쪽에만 있다).
-
-아직 없는 것:
-    - **프로필 변경.** 연결할 때 한 번만 넣는다(11/17 BE1 결정). handsfree에서 관람객이 말로
-      출신을 알려 줘도 비교 후보의 순서는 첫 메시지의 profile로 정한다(모델은 후보 둘을 다 본다).
-    - 실제 Gemini 동시 접속 한도 확인과 인증(관람별 상태는 분리되어 있다).
-    - **에코 처리.** handsfree는 마이크를 계속 열어 두므로 스피커 소리를 마이크가 다시 들으면
-      자기 말에 끼어들 수 있다. 서버에서는 막지 않는다(이어폰 또는 브라우저 echoCancellation 전제).
-    - 10분을 넘는 실제 관람 길이의 실기기 확인. 아래 재연결은 가짜 Gemini 시험까지만 확인했다.
-
-세션 수명(공식 문서 확인, 2026-11-14 · aistudio.google.com/docs/live-api/session-management):
-    - 압축이 없으면 음성 전용 세션은 15분, 음성+영상은 2분에서 끝난다. contextWindowCompression을
-      켜면 "무제한"으로 늘어난다고 적혀 있다. 그래서 켜 둔다. handsfree는 사진이 섞이므로 꼭 필요하다.
-    - 연결 하나의 수명은 그와 별개로 "약 10분"이고, 연결이 끝나면 세션도 끝난다. 그래서 세션을
-      여러 연결에 걸쳐 잇는 sessionResumption이 필요하다.
-    - 연결이 곧 닫히기 전에 GoAway가 오고 남은 시간(timeLeft)이 함께 온다. 문서는 미리 오는
-      시간을 숫자로 밝히지 않는다. 그래서 '몇 초 전에 온다'고 가정하지 않고 받는 즉시 옮긴다.
-    - 재개 핸들은 "마지막 세션 종료 뒤 2시간" 유효하다. 거듭 실패하면 핸들을 버리고 새 대화로
-      다시 시작한다(대화 내용은 잃는다).
+설정: live_config.py / 자막: live_transcript.py / 관람 처리: live_conversation.py
+통신 계약: docs/api.md / 검증: tests/test_live_session_lifetime.py
 """
 
 import asyncio
@@ -62,6 +13,7 @@ import base64
 import binascii
 import json
 import time
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -78,35 +30,85 @@ from . import visit_log
 from .live_conversation import LiveConversation
 from .live_transcript import feed_said, flush_said
 
-router = APIRouter()
+
+@asynccontextmanager
+async def lifespan(app):
+    settings.print_live_config()
+    cleaner = asyncio.create_task(clean_idle_sessions())
+    try:
+        yield
+    finally:
+        cleaner.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleaner
+
+
+router = APIRouter(lifespan=lifespan)
 artworks = load_artworks()
 comparisons = load_comparisons()
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
-router.add_event_handler("startup", settings.print_live_config)
-
-# 말의 앞뒤에 넣는 무음(push 모드). 경계에 말이 바로 붙으면 첫 단어·끝 단어가 잘린다. 11/11 측정에서
-# 취약 문장 5개를 조건별 5회(각 25건) 시험해 완전 일치가 10/25 → 25/25였다.
+# push 모드에서 첫 단어와 끝 단어가 잘리지 않도록 발화 전후에 무음을 넣는다.
 SILENCE_MS = 300
 SILENCE_PCM = b"\x00\x00" * (16000 * SILENCE_MS // 1000)  # 16kHz 16bit 모노 무음
 
 HANDLE_GIVE_UP = 3       # 연달아 이 횟수만큼 실패하면 재개 핸들을 버린다
 RECONNECT_WAIT_MAX = 5   # 재연결 사이 최대 대기(초)
 
-# 폰이 다시 붙을 때 이어 쓸 것. session_id → {"handle", "artwork_id", "updated"(time.time())}.
-# 공식 문서(session-management): 재개 핸들은 마지막 세션 종료 뒤 2시간 유효하다. 넘은 것은 버린다.
+# 재개 정보: session_id → {handle, artwork_id, updated}. 종료 후 2시간까지 유지한다.
 HANDLE_TTL_S = 2 * 60 * 60
+CLEANUP_INTERVAL_S = 60
 resume_store = {}
-# 지금 붙어 있는 폰 WS. session_id → 앞 연결을 닫게 하는 함수. 같은 관람에 WS가 둘이면 Gemini
-# 세션도 둘이 되어 서로 다른 대화가 생긴다. 그래서 새 연결이 오면 앞의 것을 닫는다.
+# 연결 정보: session_id → {close, state, reconnects}. 같은 관람에는 연결 하나만 유지한다.
 active_connections = {}
+
+
+def cleanup_expired():
+    """기억과 재개 핸들을 함께 청소한다. 접속 중인 관람은 삭제하지 않는다."""
+    for sid in sessions.expire_idle_sessions(HANDLE_TTL_S, active_connections):
+        resume_store.pop(sid, None)
+    now = time.time()
+    for sid, entry in list(resume_store.items()):
+        if sid not in active_connections and now - entry["updated"] > HANDLE_TTL_S:
+            resume_store.pop(sid, None)
+
+
+async def clean_idle_sessions():
+    while True:
+        cleanup_expired()
+        await asyncio.sleep(CLEANUP_INTERVAL_S)
+
+
+def end_visit(session_id):
+    """명시적으로 끝낸 관람은 즉시 폐기하고, 아직 남은 연결도 닫는다."""
+    sessions.end_session(session_id)
+    resume_store.pop(session_id, None)
+    connection = active_connections.get(session_id)
+    if connection:
+        connection["close"]()
+
+
+@router.get("/live/status")
+async def live_status():
+    """운영 확인용 상태. 질문·답변·재개 핸들·전체 세션 ID는 내보내지 않는다."""
+    cleanup_expired()
+    now = time.monotonic()
+    return {
+        "active_visits": len(active_connections),
+        "visits": [{"session_id": sid[:4], "artwork_id": c["state"]["artwork_id"],
+                    "idle_s": round(max(0, now - c["state"]["last_input"]), 1),
+                    "gemini_connected": c["state"]["session"] is not None,
+                    "reconnects": c["reconnects"]}
+                   for sid, c in active_connections.items()],
+        "saved_resumes": len(resume_store),
+        "model": settings.LIVE_MODEL, "voice": settings.LIVE_VOICE,
+        "frame_policy": settings.FRAME_POLICY,
+    }
 
 
 def saved_resume(session_id):
     """저장된 재개 정보. 2시간이 지났으면 지우고 None."""
-    now = time.time()
-    for sid in [k for k, v in resume_store.items() if now - v["updated"] > HANDLE_TTL_S]:
-        del resume_store[sid]
+    cleanup_expired()
     return resume_store.get(session_id)
 
 
@@ -139,9 +141,7 @@ async def live(ws: WebSocket):
         return
     profile = first.get("profile") or {}
 
-    # 관람 기록(FE1). 기본값은 꺼짐이고, LIVE_VISIT_LOG가 team·visitor일 때만 파일을 만든다.
-    # 꺼져 있으면 아무것도 하지 않는 기록기가 와서 아래 vlog.event(...) 줄은 그냥 지나간다.
-    # 넣을 수 있는 칸은 server/visit_log.py의 ALLOWED에 적혀 있다 — 들은 말·한 말은 넣을 칸이 없다.
+    # 관람 기록은 기본 비활성. 허용 필드는 visit_log.ALLOWED에서 관리한다.
     vlog = visit_log.start(mode=mode, model=settings.LIVE_MODEL, voice=settings.LIVE_VOICE,
                            ui_lang=str(profile.get("language") or "en")[:16])
 
@@ -158,15 +158,6 @@ async def live(ws: WebSocket):
     else:
         art_from_resume = ""
 
-    # 같은 관람의 앞 연결을 닫는다(폰이 다시 붙었는데 앞 WS가 아직 살아 있는 경우).
-    kicked = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    previous = active_connections.get(sid)
-    if previous:
-        previous()
-    my_kick = lambda: loop.call_soon_threadsafe(kicked.set)  # noqa: E731 (다른 이벤트 루프에서도 불린다)
-    active_connections[sid] = my_kick
-
     conversation = LiveConversation(
         mode=mode, artwork_id=art["artwork_id"] if art else art_from_resume,
         profile=profile, visit=visit, artworks=artworks, comparisons=comparisons,
@@ -178,6 +169,16 @@ async def live(ws: WebSocket):
     else:
         config = settings.handsfree_config(profile, artworks, conversation.verified_comparisons)
     client = make_client()
+
+    # 설정과 클라이언트 생성에 성공한 뒤 등록한다. 같은 관람의 이전 연결은 닫는다.
+    kicked = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    previous = active_connections.get(sid)
+    if previous:
+        previous["close"]()
+    connection = {"close": lambda: loop.call_soon_threadsafe(kicked.set),
+                  "state": state, "reconnects": 0}
+    active_connections[sid] = connection
 
     async def send_frame(session, jpeg):
         await session.send_realtime_input(video=types.Blob(data=jpeg, mime_type="image/jpeg"))
@@ -219,11 +220,7 @@ async def live(ws: WebSocket):
                         continue
                     data = {"type": "frame", "jpeg_bytes": jpeg}
                     if state["opening_turn"]:
-                        # 인사 턴에는 사진을 넣지 않는다. 11/18 측정(포트 8055, 인사만 받는 왕복):
-                        # 사진을 같이 넣으면 3/3이 인사 뒤에 모델 속 글을 흘렸고, 한 번은 글이
-                        # "(No function call needed, per instructions to greet first.)"였다.
-                        # 사진 없이는 1/3이었다. 인사 신호 자체가 "아직 그림 이야기는 하지 말라"고
-                        # 적고 있으니, 인사가 끝난 뒤에 최신 1장을 넘긴다.
+                        # 인사 중에는 사진을 보류한다. 사진 입력이 인사 자막의 내부 지시문 노출을 유발할 수 있다.
                         state["latest_frame"] = jpeg
                         continue
                     if settings.FRAME_POLICY == "on_speech":
@@ -272,7 +269,7 @@ async def live(ws: WebSocket):
                 state["session"] = None
 
     async def read_one_turn(session):
-        """한 턴을 읽는다. 돌려주는 값은 왜 끝났는지다: "turn"(답변 끝) 또는 "go_away"(연결 교체).
+        """Gemini 턴을 수신하고 종료 원인("turn" 또는 "go_away")을 반환한다.
 
         GoAway를 받은 뒤에도 답변이 나오는 중이면 끝까지 읽고 나서 옮긴다. 남은 시간을 문서가
         숫자로 밝히지 않으므로 '아직 여유가 있다'고 믿고 기다리지는 않는다.
@@ -291,7 +288,7 @@ async def live(ws: WebSocket):
                 if not state["turn_open"]:
                     return "go_away"
             if m.tool_call:
-                # 모델은 함수 결과를 받을 때까지 기다린다. 응답은 우리가 직접 보내야 한다.
+                # 모델의 함수 호출마다 서버가 결과를 전송한다.
                 responses = []
                 for call in m.tool_call.function_calls or []:
                     result = conversation.answer_tool_call(call)
@@ -307,8 +304,7 @@ async def live(ws: WebSocket):
                 if "END" in name.upper():
                     state["speech_end_at"] = time.monotonic()
             if getattr(m, "usage_metadata", None) is not None:
-                # 턴마다 여러 번 올 수 있어 마지막 것만 들고 있다가 턴이 끝날 때 한 번 적는다.
-                # 이 숫자는 세션 누적이다(11/18 실측: total 2053→2522→3849→4166). 아래에서 차이를 적는다.
+                # 누적 사용량 업데이트 중 마지막 값을 턴 종료 시 기록한다.
                 state["usage"] = m.usage_metadata
             c = m.server_content
             if c is None:
@@ -348,10 +344,7 @@ async def live(ws: WebSocket):
                 await end_opening_turn(session)
                 conversation.remember_turn()
                 if state["usage"] is not None:
-                    # Gemini가 주는 숫자는 세션 누적이다(11/18 실측: total 2053→2522→3849→4166).
-                    # 그대로 적으면 턴마다 더할 수 없으니 앞 턴과의 차이를 적는다.
-                    # 그때의 작품을 같이 적는다. 없으면 어느 작품 설명이 비싼지 알 수 없다.
-                    # 작품을 아직 모르는 턴(인사)은 빈 값이 된다.
+                    # 사용량은 Gemini 세션의 누적값이므로 직전 값과의 차이를 작품별로 기록한다.
                     now_usage = visit_log.usage_fields(state["usage"])
                     vlog.event("usage", artwork_id=state["artwork_id"],
                                **{k: max(0, v - state["usage_seen"].get(k, 0))
@@ -396,16 +389,11 @@ async def live(ws: WebSocket):
         return cue
 
     async def gemini_sessions():
-        """Live 세션을 열고, 끊기거나 연결 수명이 다하면 핸들로 다시 붙는다. 폰 연결은 끊지 않는다.
+        """Gemini 연결을 열고 GoAway·비활성 종료·핸들 거부 시 재연결한다.
 
-        session.receive()는 한 턴이 끝나면 스스로 끝나므로 안쪽에서 다시 부른다. 한 번만 돌리면
-        두 번째 질문의 답이 오지 않고, 아무도 Gemini 소켓을 읽지 않아 연결이 끊긴다(11/11에 겪음).
-
-        연결을 바꾸는 경우는 셋이다.
-            1) GoAway 예고(연결 약 10분 수명) → 우리가 먼저 옮긴다.
-            2) 질문 사이 2분 비활성으로 Gemini가 닫음(1008) → 다시 붙는다.
-            3) 핸들이 거부됨(종료 뒤 2시간 지남 등) → 거듭 실패하면 핸들을 버리고 새로 시작한다.
-        """
+receive()는 한 턴마다 끝나므로 연결이 유지되는 동안 반복해서 읽는다.
+핸들 거부가 이어지면 핸들을 버리고 새 대화를 시작한다.
+"""
         first_time = True
         fails = 0           # 연달아 실패한 횟수. 재연결이 빈 바퀴를 돌지 않게 쉬는 시간을 늘린다.
         while True:
@@ -418,14 +406,7 @@ async def live(ws: WebSocket):
                     resumed = want_resume and had_handle
                     cue = first_cue(resumed) if first_time else None
                     if cue:
-                        # 버튼이 없으므로 Live가 먼저 말을 건다(목소리 하나로 통일, 브라우저 음성 인사 없음).
-                        # 다시 붙었지만 대화를 잃었으면 인사 대신 돌아왔다고만 말한다.
-                        #
-                        # state["session"]을 세우기 전에 보낸다. 세우는 순간부터 browser_to_gemini가
-                        # 폰의 마이크 PCM과 사진을 send_realtime_input으로 흘리는데, google-genai
-                        # 2.34.0 live.py의 send_client_content 주의문이 "같은 대화에서 둘을 섞어 쓰는
-                        # 것은 권하지 않으며 예상 밖의 결과가 날 수 있다"고 적고 있다. 인사 신호가
-                        # 먼저 닿도록 순서를 정해 둔다.
+                        # SDK의 입력 전송 순서를 지키기 위해 인사 신호를 먼저 보낸 뒤 마이크·사진 전송을 허용한다.
                         state["opening_turn"] = True
                         await session.send_client_content(
                             turns=types.Content(role="user", parts=[types.Part(text=cue)]),
@@ -444,6 +425,8 @@ async def live(ws: WebSocket):
                         **({} if first_time else {"kept_conversation": had_handle})}))
                     if first_time and want_resume and resumed:
                         vlog.event("quality", issue="resumed", kept_conversation=True)
+                    if not first_time:
+                        connection["reconnects"] += 1
                     first_time = False
                     fails = 0
                     while True:
@@ -452,7 +435,7 @@ async def live(ws: WebSocket):
                 print(f"[live] 연결 교체(GoAway). 이 연결 수명 {time.monotonic() - opened:.0f}초")
                 leave_session()
             except APIError as e:
-                if active_connections.get(sid) is not my_kick:
+                if active_connections.get(sid) is not connection:
                     # 이 관람은 이미 새 폰 연결이 이어받았다(같은 핸들로 붙으면 Gemini가 앞 세션을 닫는다).
                     # 여기서 다시 붙으면 새 연결의 대화를 빼앗으므로 그만둔다.
                     print(f"[live] 세션 종료 {e.code}: 새 연결이 이어받아 이 연결은 다시 붙지 않는다")
@@ -464,7 +447,7 @@ async def live(ws: WebSocket):
                       f"다시 붙는다(핸들 {'있음' if state['handle'] else '없음'}, 연달아 실패 {fails})"
                       + (" — 핸들을 버리고 새 대화로 시작한다" if drop_handle else ""))
                 if drop_handle:
-                    # 핸들이 문제일 가능성이 높다(2시간 만료 등). 대화를 잃더라도 도슨트를 살린다.
+                    # 재개 실패가 반복되면 만료 가능성이 있는 핸들을 버리고 새 대화로 전환한다.
                     state["handle"] = None
                 leave_session(kept_conversation=not drop_handle, announce=not first_time)
                 await asyncio.sleep(min(0.5 * 2 ** (fails - 1), RECONNECT_WAIT_MAX))
@@ -478,12 +461,7 @@ async def live(ws: WebSocket):
             else:
                 await ws.send_text(json.dumps(payload))
 
-    # 셋 중 하나가 끝나면(폰이 떠났거나 오류) 나머지를 끊는다.
-    #
-    # 왜 gather가 아닌가: gather는 폰 쪽 루프가 끝나도 나머지를 기다린다. 그러면 관람객이 창을
-    # 닫은 뒤에도 Gemini 세션이 자기 수명까지 살아 있고 우리는 그동안 재연결을 계속한다.
-    #
-    # kicked: 같은 session_id로 새 폰 연결이 오면 켜진다 → 이 연결을 닫는다.
+    # 폰 종료·오류·연결 교체 중 하나가 발생하면 나머지 작업도 취소한다.
     tasks = [asyncio.create_task(f()) for f in (browser_to_gemini, gemini_sessions, queue_to_browser)]
     tasks.append(asyncio.create_task(kicked.wait()))
 
@@ -505,7 +483,7 @@ async def live(ws: WebSocket):
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         # 이 관람의 지금 연결에서 바로 뺀다. 아래 정리(Gemini 연결 닫기)는 몇 초 걸릴 수 있는데,
         # 그 사이 폰이 다시 붙으면 이미 떠난 연결을 '앞 연결'로 잘못 닫으려 하게 된다.
-        if active_connections.get(sid) is my_kick:
+        if active_connections.get(sid) is connection:
             del active_connections[sid]
         for t in pending:
             t.cancel()
@@ -516,30 +494,40 @@ async def live(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        # Gemini 세션은 위에서 작업을 취소하며 닫혔다. 핸들은 남긴다(2시간 시계는 지금부터).
-        # 정리하는 몇 초 사이에 새 연결이 이어받아 더 새 핸들을 저장했을 수 있으므로, 저장소의 핸들이
-        # 우리 것일 때만 시각을 갱신한다(새 핸들을 옛 핸들로 덮지 않는다).
-        entry = resume_store.get(sid)
-        if entry is None:
-            conversation.save_resume()
-        elif entry["handle"] == state["handle"]:
-            entry["updated"] = time.time()
-        if active_connections.get(sid) is my_kick:
+        # 종료 시점부터 재개 유효 시간을 센다. 새 연결의 핸들은 덮어쓰지 않는다.
+        ended = sessions.get_session(sid) is not visit
+        phone_idle = (phone_silent is not None and phone_silent.done()
+                      and not phone_silent.cancelled())
+        if not ended:
+            entry = resume_store.get(sid)
+            if entry is None:
+                conversation.save_resume()
+            elif entry["handle"] == state["handle"]:
+                entry["updated"] = time.time()
+        else:
+            resume_store.pop(sid, None)
+        if active_connections.get(sid) is connection:
             del active_connections[sid]
-        # 관람 기록을 닫는다. 왜 끝났는지만 남긴다(세션 ID는 남기지 않는다).
-        vlog.end(reason="phone_idle" if (phone_silent is not None and phone_silent.done()
-                                         and not phone_silent.cancelled())
-                 else "replaced" if kicked.is_set() else "phone_closed")
+        # 관람 기록에는 세션 ID 없이 종료 사유만 남긴다.
+        if ended:
+            reason = "visit_ended"
+        elif phone_idle:
+            reason = "phone_idle"
+        elif kicked.is_set():
+            reason = "replaced"
+        else:
+            reason = "phone_closed"
+        vlog.end(reason=reason)
     print(f"[live] 폰 연결 끝({sid[:8]}, {mode}). 저장된 핸들 "
           f"{'있음' if (resume_store.get(sid) or {}).get('handle') else '없음'}")
-    if phone_silent is not None and phone_silent.done() and not phone_silent.cancelled():
+    if phone_idle:
         try:
             await ws.close(code=4001, reason="no input from the phone")
         except Exception:
             pass
     if kicked.is_set():
-        print(f"[live] 같은 관람({sid[:8]})의 새 연결이 와서 앞 연결을 닫는다")
         try:
-            await ws.close(code=4000, reason="replaced by a newer connection")
+            await ws.close(code=1000 if ended else 4000,
+                           reason="visit ended" if ended else "replaced by a newer connection")
         except Exception:
             pass

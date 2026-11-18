@@ -976,6 +976,67 @@ try:
 finally:
     relay.comparisons = original_comparisons
 
+print("32. 비활성 관람 자동 정리와 명시적 관람 종료")
+old_interval = relay.CLEANUP_INTERVAL_S
+relay.CLEANUP_INTERVAL_S = 0.02
+try:
+    with TestClient(server_app):
+        expired = sessions.create_session()
+        expired.last_active_at -= relay.HANDLE_TTL_S + 1
+        relay.resume_store[expired.session_id] = {
+            "handle": "expired-handle", "artwork_id": ARTWORK, "updated": time.time()}
+        deadline = time.monotonic() + 1
+        while expired.session_id in relay.resume_store and time.monotonic() < deadline:
+            time.sleep(0.01)
+        check("새 요청이 없어도 주기적으로 기억과 핸들을 함께 지운다",
+              expired.session_id not in relay.resume_store
+              and sessions.get_session(expired.session_id) is None)
+finally:
+    relay.CLEANUP_INTERVAL_S = old_interval
+
+fake = FakeClient([
+    [[msg(handle="status-h1"), msg(said="private first answer", turn_complete=True)]],
+    [[msg(handle="status-h2"), msg(said="private second answer", turn_complete=True)]],
+])
+relay.make_client = lambda: fake
+with TestClient(server_app) as client:
+    with client.websocket_connect("/ws/live") as first_ws, client.websocket_connect("/ws/live") as second_ws:
+        first_ws.send_json(HANDSFREE)
+        first_ready = first_ws.receive_json()
+        while first_ws.receive_json()["type"] != "turn_complete":
+            pass
+        second_ws.send_json(HANDSFREE)
+        second_ready = second_ws.receive_json()
+        while second_ws.receive_json()["type"] != "turn_complete":
+            pass
+        first_sid, second_sid = first_ready["session_id"], second_ready["session_id"]
+        first_visit = sessions.get_session(first_sid)
+        first_visit.last_active_at -= relay.HANDLE_TTL_S + 1
+        status = client.get("/live/status").json()
+        check("운영 상태에서 서로 다른 두 관람과 Gemini 연결을 확인한다",
+              status["active_visits"] == 2
+              and all(v["gemini_connected"] and v["reconnects"] == 0 for v in status["visits"]))
+        check("운영 상태를 조회해도 오래 연결된 관람은 지우지 않는다",
+              sessions.get_session(first_sid) is first_visit)
+        check("운영 상태에는 전체 세션 ID·대화·재개 핸들이 없다",
+              all(secret not in json.dumps(status) for secret in
+                  (first_sid, second_sid, "private first answer", "status-h1"))
+              and all(len(v["session_id"]) == 4 for v in status["visits"]))
+        client.post(f"/api/session/{first_sid}/end")
+        closed = first_ws.receive()
+        check("END VISIT은 연결·기억·핸들을 즉시 정리한다",
+              closed.get("type") == "websocket.close" and closed.get("code") == 1000
+              and sessions.get_session(first_sid) is None
+              and first_sid not in relay.resume_store, str(closed))
+        check("한 관람의 종료가 다른 관람에 영향을 주지 않는다",
+              client.get("/live/status").json()["active_visits"] == 1
+              and sessions.get_session(second_sid) is not None)
+        second_ws.close()
+        first_ws.close()
+    saved = relay.resume_store.get(second_sid)
+    check("일시 연결 종료는 관람 기억과 재개 핸들을 유지한다",
+          sessions.get_session(second_sid) is not None and saved is not None
+          and saved["handle"] == "status-h2")
 
 print()
 if failures:

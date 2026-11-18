@@ -1,19 +1,8 @@
-"""폰 웹앱(static/)과 Gemini를 잇는 FastAPI 서버의 입구.
+"""AI 도슨트 HTTP·WebSocket 서버. 담당: BE1.
 
-담당: BE1
-같이 보는 파일: docs/api.md (요청·응답 약속), gemini_client.py, session.py, content.py
-
-이 파일은 "어떤 주소로 무엇을 받으면 무엇을 돌려준다"만 정한다. 실제 일은 다른 파일이 한다.
-    GET  /                          폰 웹앱 첫 화면(static/index.html)
-    POST /api/session               관람 시작: 세션 ID와 첫 인사
-    POST /api/turn                  대화 한 번: 음성·글 + 사진 → 도슨트 답
-    POST /api/session/{id}/end      관람 끝: 세션 기억 삭제
-    POST /api/ask                   텍스트 질문·답변: 작품 ID + 질문 → 답변 (server/ask.py)
-    WS   /ws/live                   실시간 음성 대화 중계 (server/live.py, FE1)
-    GET  /live                      Live 음성 시험 페이지 (server/live.py, 운영 화면 아님)
-요청·응답 형식을 바꾸면 static/api.js(FE1)가 고장 나므로 docs/api.md를 먼저 고치고 FE1과 합의한다.
-
-음성과 사진은 요청을 처리하는 동안만 메모리에 있고 파일로 저장하지 않는다.
+세션과 요청을 연결하고 콘텐츠 조회·Gemini 호출은 담당 모듈에 위임한다.
+Live 라우터는 live.py, 텍스트 질문 라우터는 ask.py에 정의한다.
+API 계약: docs/api.md. 음성·프레임은 처리 중에만 메모리에 둔다.
 실행: uv run uvicorn server.app:app --host 0.0.0.0 --port 8000
 """
 
@@ -56,8 +45,7 @@ ask_api.artworks = artworks
 ask_api.get_client = gemini
 app.include_router(ask_api.router)
 
-# 실시간 음성 대화 중계(WS /ws/live). 경로는 11/17에 BE1과 합의했다(11-18_통합_인터페이스.md 미정 표).
-# 중계 코드는 FE1 담당(server/live.py)이고, 지시문은 BE1의 live_context.build_live_instruction을 쓴다.
+# Live 중계는 HTTP 경로와 같은 콘텐츠 목록을 사용한다.
 live_api.artworks = artworks
 live_api.comparisons = comparisons
 app.include_router(live_api.router)
@@ -127,5 +115,5 @@ async def turn(
 @app.post("/api/session/{session_id}/end")
 def end(session_id: str):
     """관람을 끝내고 그 세션의 기억을 지운다. 없는 세션이어도 오류 없이 ok를 돌려준다."""
-    sessions.end_session(session_id)
+    live_api.end_visit(session_id)
     return {"ok": True}

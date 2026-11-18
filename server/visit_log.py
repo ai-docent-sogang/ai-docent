@@ -1,34 +1,11 @@
-"""관람 기록 — Live 대화에서 일어난 일을 사건 한 줄씩 남긴다.
+"""Live 관람 이벤트의 JSONL 기록 (담당 FE1, `docs/FE1/관람기록_설계.md`).
 
-담당: FE1
-설계: docs/FE1/관람기록_설계.md (11/18). 같이 보는 파일: server/live.py (사건이 생기는 곳)
+기록은 기본적으로 꺼져 있다. `LIVE_VISIT_LOG=visitor`는 박물관 협의 후 사용한다.
+음성·프레임·대화 원문·서버 세션 ID·국적·연령대·IP·기기 정보는 저장하지 않는다.
+절대 시각은 관람 시작 시각을 10분 단위로 기록한다.
 
-**기본값은 꺼짐이다.** `LIVE_VISIT_LOG`가 `team`이나 `visitor`일 때만 파일을 만든다.
-실제 관람객 대상(`visitor`)은 박물관 협의 뒤에만 켠다.
-
-**남기지 않는 것**: 들은 말·한 말의 글자, 소리, 사진, 서버 세션 ID, 국적·연령대,
-IP·기기 정보, 벽시계 시각(관람 시작 버킷 외). 이것은 약속이 아니라 코드로 막혀 있다 —
-사건마다 넣을 수 있는 칸이 아래 ALLOWED에 적혀 있고, 그 밖의 칸은 거부한다(FieldNotAllowed).
-글자 칸도 64자를 넘기면 거부한다. 받아쓰기가 실수로 섞여 들어오는 것을 막기 위해서다.
-
-AGENTS.md: "카메라 프레임과 음성은 처리에만 사용하고 기본적으로 저장하지 않는다."
-
-파일: `logs/visits-YYYYMMDD.jsonl` (한 줄이 사건 하나). `logs/`는 git에서 제외돼 있다.
-수집 시각부터 `LIVE_VISIT_KEEP_DAYS`(기본 30)일이 지난 파일은 다음에 켤 때 지운다.
-
-환경 변수:
-    LIVE_VISIT_LOG          off(기본) | team | visitor
-    LIVE_VISIT_SOURCE_KIND  mock | team_rehearsal | team_shoot | visitor  (team일 때 함께 지정)
-    LIVE_VISIT_SEASON       전시 회차 값. 비우면 "" (설계의 season_id)
-    LIVE_VISIT_GALLERY      전시실 값. 비우면 ""
-    LIVE_VISIT_DIR          기록 폴더. 비우면 저장소의 logs/
-    LIVE_VISIT_KEEP_DAYS    보관 일수. 기본 30
-
-쓰는 쪽은 켜짐·꺼짐을 신경 쓰지 않는다. 꺼져 있으면 아무것도 하지 않는 기록기를 돌려준다.
-
-    log = visit_log.start(mode="handsfree", model=..., voice=...)
-    log.event("artwork_identified", artwork_id="KHD_SSIREUM", via="function")
-    log.end(reason="phone_closed")
+`logs/visits-YYYYMMDD.jsonl`은 Git에서 제외한다. 기록을 시작할 때
+`LIVE_VISIT_KEEP_DAYS`(기본 30일)보다 오래된 파일을 정리한다.
 
 미리 보기: `uv run python -m server.visit_log`
 """
@@ -44,16 +21,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODES = ("off", "team", "visitor")
 SOURCE_KINDS = ("mock", "team_rehearsal", "team_shoot", "visitor")
-# 같은 것을 가리키는 다른 철자. 측정 계획과 결정 기록은 team_filming으로 적고 코드는 team_shoot이다.
-# 12/1 촬영은 한 번뿐이고 자료를 다시 받을 수 없다. 철자가 틀리면 경고만 찍히고 team_rehearsal로
-# 적혀서 리허설과 섞인다("합산하지 않는다" 11/16 결정이 깨진다). 그래서 둘 다 받는다.
+# 측정 계획의 team_filming을 허용해 촬영 기록이 리허설로 분류되지 않게 한다.
 SOURCE_KIND_ALIASES = {"team_filming": "team_shoot", "shoot": "team_shoot",
                        "rehearsal": "team_rehearsal"}
-START_BUCKET_MINUTES = 10   # 근거 조사: 분 단위 시각은 재식별 단서가 된다
+START_BUCKET_MINUTES = 10   # 시각을 범주화해 재식별 가능성을 줄인다.
 DURATION_BUCKET_S = 10
-MAX_TEXT = 64               # 이보다 긴 글자는 받아쓰기가 섞인 것으로 본다
+MAX_TEXT = 64               # 받아쓰기가 실수로 섞이는 것을 줄인다.
 
-# 사건마다 넣을 수 있는 칸. 여기 없는 칸은 거부한다. 설계 문서의 "남기는 것" 표와 같아야 한다.
+# 이벤트별 허용 필드는 설계 문서의 수집 항목과 일치시킨다.
 ALLOWED: dict[str, set[str]] = {
     "visit_start": {"start_bucket", "season_id", "gallery", "ui_lang", "mode", "model", "voice"},
     "artwork_identified": {"artwork_id", "via"},
@@ -61,17 +36,15 @@ ALLOWED: dict[str, set[str]] = {
     "question": {"artwork_id", "channel", "label", "outcome", "first_audio_ms"},
     "comparison": {"artwork_id", "comparison_id", "via"},
     "quality": {"issue", "kept_conversation"},
-    # usage의 artwork_id: 어느 작품 설명이 비싼지 알려면 턴마다의 작품이 있어야 한다.
-    # 작품을 아직 모르는 턴(인사)은 빈 값이다.
+    # 작품별 사용량을 집계한다. 인사 등 작품이 정해지지 않은 턴은 작품 ID를 비운다.
     "usage": {"artwork_id", "input_audio", "input_image", "input_text", "output_audio", "total"},
     "visit_end": {"reason", "duration_s", "counts"},
 }
-# quality.issue가 가질 수 있는 값. 그 밖은 거부한다.
 QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close")
 
 
 class FieldNotAllowed(ValueError):
-    """설계에 없는 칸이나 너무 긴 글자를 넣으려 했다. 개인정보 약속을 코드로 지키는 자리다."""
+    """허용되지 않은 이벤트·필드·값을 거부한다."""
 
 
 def _check(kind: str, fields: dict) -> dict:
@@ -133,13 +106,13 @@ def _dir() -> Path:
 
 
 def start_bucket(now: float) -> str:
-    """벽시계 시각을 10분 단위로 버린다. 관람 한 번에 한 번만 남긴다."""
+    """관람 시작 시각을 10분 단위로 내림한다."""
     dt = datetime.fromtimestamp(now).replace(second=0, microsecond=0)
     return dt.replace(minute=dt.minute - dt.minute % START_BUCKET_MINUTES).isoformat(timespec="minutes")
 
 
 def purge_old(folder: Path, keep_days: int, now: float) -> list[str]:
-    """보관 기간이 지난 기록 파일을 지운다. 지운 파일 이름을 돌려준다."""
+    """보관 기간이 지난 파일을 지우고 파일명 목록을 반환한다."""
     cutoff = (datetime.fromtimestamp(now) - timedelta(days=keep_days)).strftime("%Y%m%d")
     gone = []
     for path in sorted(folder.glob("visits-*.jsonl")):
@@ -151,11 +124,9 @@ def purge_old(folder: Path, keep_days: int, now: float) -> list[str]:
 
 
 def usage_fields(meta) -> dict:
-    """Gemini의 `usage_metadata` 하나를 `usage` 사건의 칸으로 바꾼다.
+    """Gemini의 사용량을 입출력 유형별 토큰 수로 변환한다.
 
-    SDK를 부르지 않는다(값만 읽는다). 종류별 숫자는 `prompt_tokens_details`·
-    `response_tokens_details`에 `modality`(AUDIO/IMAGE/TEXT)와 `token_count`로 들어 있다.
-    없는 값은 0으로 둔다. 종류별 합이 전체와 다를 수 있다(생각 토큰 등은 종류가 없다).
+    누락값은 0을 사용한다. 유형별 합은 생각 토큰 등으로 인해 총 토큰 수와 다를 수 있다.
     """
     out = {"input_audio": 0, "input_image": 0, "input_text": 0, "output_audio": 0, "total": 0}
     if meta is None:
@@ -173,7 +144,7 @@ def usage_fields(meta) -> dict:
 
 
 class NullLog:
-    """기록이 꺼져 있을 때. 부르는 쪽이 켜짐·꺼짐을 묻지 않아도 되게 한다."""
+    """기록 비활성 상태의 기록기."""
 
     on = False
     visit_id = ""
@@ -186,7 +157,7 @@ class NullLog:
 
 
 class VisitLog:
-    """관람 한 번. 사건을 한 줄씩 파일에 덧붙인다."""
+    """관람 한 건의 이벤트를 JSONL에 추가한다."""
 
     on = True
 
@@ -229,14 +200,14 @@ class VisitLog:
             with (self._folder / f"visits-{day}.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(line, ensure_ascii=False) + "\n")
         except OSError as exc:
-            # 기록 때문에 관람이 멈추면 안 된다. 한 번 알리고 그 뒤로는 조용히 넘긴다.
+            # 기록 실패로 관람을 중단하지 않고 첫 실패만 알린다.
             if not getattr(self, "_warned", False):
                 print(f"[visit_log] 기록을 쓰지 못했다({exc}). 관람은 그대로 이어 간다")
                 self._warned = True
 
 
 def start(*, mode: str, model: str, voice: str, ui_lang: str = "en", clock=time.time):
-    """관람 하나를 시작한다. 꺼져 있으면 아무것도 하지 않는 기록기를 돌려준다."""
+    """관람 기록을 시작한다. 기록을 사용할 수 없으면 `NullLog`를 반환한다."""
     log_mode = _mode()
     if log_mode == "off":
         return NullLog()
@@ -255,7 +226,7 @@ def start(*, mode: str, model: str, voice: str, ui_lang: str = "en", clock=time.
     return log
 
 
-if __name__ == "__main__":  # 미리 보기: 임시 폴더에 한 관람을 적고 그대로 찍는다
+if __name__ == "__main__":
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
