@@ -3,7 +3,7 @@
 // documented profile API before personalization can influence Gemini responses.
 import { postTurn, startSession } from "./api.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
-import { continueSavedVisit, createLiveConversation, createVisitStore, createWakeLock } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
+import { continueSavedVisit, createLiveConversation, createVisitStore, createWakeLock, FRAME_MAX_WIDTH } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -26,7 +26,7 @@ let currentArtwork = "";
 let currentComparison = "";
 let returnScreen = "experience-screen";
 const viewedArtworks = new Map(); // artwork_id => {title,artist,comparisons:Set}. Session memory only.
-const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 1100;
+const MIN_WAV_BYTES = 8000;   // 사진 가로 크기는 live_conversation.js의 FRAME_MAX_WIDTH 하나를 쓴다
 
 // ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
 // 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.

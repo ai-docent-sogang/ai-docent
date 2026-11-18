@@ -38,7 +38,11 @@
 import { createPlayer } from "./live_player.js";
 
 export const FRAME_INTERVAL_MS = 3000;
-export const FRAME_MAX_WIDTH = 768;
+// 사진 가로 최대 크기. **두 경로가 함께 쓰는 단일 출처다** — app.js가 이것을 가져다 쓴다.
+// 11/18에 BE2 요청으로 768 → 1100으로 올렸다(인식 정확도). 두 곳에 따로 적어 두었더니
+// app.js만 1100이 되고 Live(주 경로)는 768에 머물러 요청이 반영되지 않았다.
+// 올리면 들어가는 사진 토큰도 늘어난다(실측에서 사진은 관람 토큰의 5%였다).
+export const FRAME_MAX_WIDTH = 1100;
 export const FRAME_QUALITY = 0.7;
 // ready가 이 시간 안에 오지 않으면 그 연결 시도는 실패로 본다.
 export const OPEN_TIMEOUT_MS = 12000;

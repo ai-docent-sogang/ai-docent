@@ -76,7 +76,7 @@ from .ask import build_artwork_context
 from .content import load_artworks, load_comparisons, rank_comparisons
 from .gemini_client import make_client
 from .live_context import (MAX_COMPARISON_OPTIONS, REGION_TAGS, build_live_instruction,
-                           comparison_block, profile_block)
+                           comparison_block, home_of, profile_block)
 from .prompts import LIVE_INSTRUCTION
 from . import visit_log
 
@@ -497,7 +497,10 @@ def ranked_comparison_ids(artwork_id, profile, used_ids):
     BE1 파일을 고치지 않으려고 같은 정렬(rank_comparisons + REGION_TAGS + 최대 개수)을 여기서 다시 부른다.
     live_context.comparison_block의 정렬을 바꾸면 여기도 함께 고친다.
     """
-    country = (profile.get("country") or "").strip().lower()
+    # BE1의 home_of를 쓴다. 전에는 country만 읽어서, 프로필에 region만 들어오면 BE1의 글 순서와
+    # 이 ID 순서가 어긋났다(11/18 확인: region=japan이면 글은 Sumo가 1번, ID는 Bruegel이 1번).
+    # 모델은 글의 "option 1"을 보고 같은 자리의 ID를 넣으므로, 말한 비교와 기록된 비교가 달라진다.
+    country = home_of(profile).lower()
     ranking_profile = {"country": country, "familiar_art": REGION_TAGS.get(country, [])}
     ranked = rank_comparisons(list(verified_comparisons.values()), artwork_id, ranking_profile,
                               set(used_ids))[:MAX_COMPARISON_OPTIONS]

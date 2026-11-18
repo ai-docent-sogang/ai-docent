@@ -814,6 +814,26 @@ check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
  relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS, relay.PHONE_IDLE_S) = saved_config
 
 # ── 29. 관람 기록 (11/18 저녁) ────────────────────────────────────────────
+# ── 30. 비교 후보 글의 순서와 ID 목록의 순서가 같아야 한다 ──────────────────
+print("30. 비교 후보 글 순서와 ID 순서가 어긋나지 않는다")
+import re as _re  # noqa: E402
+
+from server.live_context import comparison_block as _block  # noqa: E402
+
+for _profile in ({"country": "japan"}, {"region": "japan"}, {"country": "france"},
+                 {"region": "france"}, {}):
+    _text = _block(relay.comparisons, ARTWORK, _profile, ())
+    _ids = relay.ranked_comparison_ids(ARTWORK, _profile, ())
+    # BE1의 글은 "1. <제목> by <작가>" 꼴로 번호를 붙여 늘어놓는다. 그 순서가 모델이 보는 순서다.
+    _titles = [m.group(1).strip() for m in _re.finditer(r"^\s*\d+\.\s*(.+?) by ", _text, _re.M)]
+    _by_id = [relay.verified_comparisons[i]["foreign_title"] for i in _ids]
+    # 모델은 글에서 "option 1"을 읽고 같은 자리의 ID를 report_comparison에 넣는다. 둘이 어긋나면
+    # 말한 비교와 기록된 비교가 달라진다(11/18에 region만 보낸 프로필에서 실제로 어긋났다).
+    check(f"{_profile or '프로필 없음'}: 글 순서와 ID 순서가 같다",
+          [t[:40] for t in _titles] == [t[:40] for t in _by_id],
+          f"글 {[t[:28] for t in _titles]} vs ID {[t[:28] for t in _by_id]}")
+
+
 print("29. 관람 기록: 켜야 남고, 글자는 한 자도 남지 않는다")
 import tempfile  # noqa: E402
 from pathlib import Path  # noqa: E402
