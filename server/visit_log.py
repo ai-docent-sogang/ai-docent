@@ -60,7 +60,7 @@ ALLOWED: dict[str, set[str]] = {
     "visit_end": {"reason", "duration_s", "counts"},
 }
 # quality.issue가 가질 수 있는 값. 그 밖은 거부한다.
-QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_closef")
+QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close")
 
 
 class FieldNotAllowed(ValueError):
