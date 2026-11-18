@@ -186,6 +186,54 @@ def clean_said(text):
     return cleaned if cleaned.strip() else ""
 
 
+# 답변 받아쓰기 끝에 섞여 오는 모델 속 글. 말소리에는 없고 받아쓰기 길로만 온다.
+# 11/18 실측(gemini-3.8-live, handsfree 인사 턴, 포트 8055):
+#   "...art you enjoy?---\n(No function call needed, per instructions to greet first.)---"
+#   "...art you enjoy. =========================================="
+#   "...do you usually enjoy? -=call:report_current_artwork{artwork_id:unknown…"(멘토 전달본 증상)
+# 가로줄·등호가 이어진 토막과 함수 이름은 도슨트가 입으로 낼 말이 아니다(지시문도 함수 이름을
+# 소리 내어 읽지 말라고 적어 둔다). 이것이 보이면 그 턴의 남은 받아쓰기는 폰에 보내지 않고
+# 관람 기억에도 넣지 않는다. 대신 걸러 낸 글을 서버 로그에 그대로 적는다.
+LEAK_MARK = re.compile(r"-=|=-|[-=]{3,}|report_current_artwork|report_comparison")
+# 조각이 끊겨 와도 놓치지 않게, 표시의 앞부분으로 끝나는 꼬리는 다음 조각까지 들고 있는다.
+LEAK_WORDS = ("-=", "=-", "---", "report_current_artwork", "report_comparison")
+
+
+def leak_hold(text):
+    """다음 조각과 이어 봐야 표시인지 알 수 있는 꼬리의 길이."""
+    for n in range(min(len(text), max(len(w) for w in LEAK_WORDS) - 1), 0, -1):
+        tail = text[-n:]
+        if any(len(w) > n and w.startswith(tail) for w in LEAK_WORDS):
+            return n
+    return 0
+
+
+def feed_said(state, chunk):
+    """받아쓰기 조각을 넣고 지금 폰에 보낼 말을 돌려준다. 속 글이 시작되면 그 턴은 더 보내지 않는다."""
+    if state["said_leak"]:
+        state["said_leak"] += chunk
+        return ""
+    buf = state["said_hold"] + chunk
+    found = LEAK_MARK.search(buf)
+    if found:
+        state["said_hold"] = ""
+        state["said_leak"] = buf[found.start():]
+        return clean_said(buf[:found.start()])
+    hold = leak_hold(buf)
+    state["said_hold"] = buf[len(buf) - hold:] if hold else ""
+    return clean_said(buf[:len(buf) - hold])
+
+
+def flush_said(state):
+    """턴이 끝났다. 들고 있던 말을 내보내고, 걸러 낸 것이 있으면 로그에 남긴다."""
+    rest = clean_said(state["said_hold"])
+    state["said_hold"] = ""
+    if state["said_leak"]:
+        print(f"[live] 모델 속 글이 답변 받아쓰기에 섞여 와서 걸러 냈다: {state['said_leak'][:300]!r}")
+        state["said_leak"] = ""
+    return rest
+
+
 async def send_silence(session):
     await session.send_realtime_input(
         audio=types.Blob(data=SILENCE_PCM, mime_type="audio/pcm;rate=16000"))
@@ -444,10 +492,27 @@ async def live(ws: WebSocket):
              # on_speech 정책: 들고 있는 최신 사진, 이 Gemini 연결에서 첫 사진을 넘겼는지
              "latest_frame": None, "first_frame_sent": False, "turn_frame_sent": False,
              # 이번 턴에 report_comparison이 불렸는지(받아쓰기로 비교를 찾을지 정할 때 쓴다)
-             "comparison_called": False}
+             "comparison_called": False,
+             # 받아쓰기 거르기: 아직 들고 있는 꼬리, 걸러 낸 모델 속 글(턴이 끝나면 로그에 적는다)
+             "said_hold": "", "said_leak": "",
+             # 인사 턴이 아직 끝나지 않았다(handsfree). 그동안 사진은 들고만 있는다.
+             "opening_turn": False}
 
     async def send_frame(session, jpeg):
         await session.send_realtime_input(video=types.Blob(data=jpeg, mime_type="image/jpeg"))
+
+    def push_said(text):
+        """걸러 낸 뒤 남은 답변 받아쓰기를 폰에 보내고 관람 기억에 쌓는다."""
+        if text:
+            state["said"] += text
+            to_browser.put_nowait(("text", {"type": "said", "text": text}))
+
+    async def end_opening_turn(session):
+        """인사 턴이 끝났다. 그동안 들고 있던 사진 1장을 바로 넘긴다."""
+        if state["opening_turn"]:
+            state["opening_turn"] = False
+            state["first_frame_sent"] = True   # on_speech: 이 1장이 그 연결의 첫 사진이다
+            await send_held_frame(session)
 
     async def send_held_frame(session):
         """on_speech 정책: 들고 있던 최신 사진 1장을 넘긴다(넘긴 뒤 비운다. 같은 사진을 거듭 넣지 않는다)."""
@@ -555,6 +620,14 @@ async def live(ws: WebSocket):
                     if not jpeg:
                         continue
                     data = {"type": "frame", "jpeg_bytes": jpeg}
+                    if state["opening_turn"]:
+                        # 인사 턴에는 사진을 넣지 않는다. 11/18 측정(포트 8055, 인사만 받는 왕복):
+                        # 사진을 같이 넣으면 3/3이 인사 뒤에 모델 속 글을 흘렸고, 한 번은 글이
+                        # "(No function call needed, per instructions to greet first.)"였다.
+                        # 사진 없이는 1/3이었다. 인사 신호 자체가 "아직 그림 이야기는 하지 말라"고
+                        # 적고 있으니, 인사가 끝난 뒤에 최신 1장을 넘긴다.
+                        state["latest_frame"] = jpeg
+                        continue
                     if FRAME_POLICY == "on_speech":
                         # 최신 1장만 들고 있는다. 연결 직후 첫 1장만 바로 넘긴다.
                         state["latest_frame"] = jpeg
@@ -632,8 +705,12 @@ async def live(ws: WebSocket):
                 continue
             if c.interrupted:
                 # 관람객이 답을 끊었다. 폰은 재생 중인 소리를 바로 멈춰야 한다.
+                push_said(flush_said(state))
+                await end_opening_turn(session)
                 to_browser.put_nowait(("text", {"type": "interrupted"}))
             if c.input_transcription and c.input_transcription.text:
+                # 관람객이 말을 시작했으면 인사 턴은 끝난 것으로 본다(사진을 더 들고 있지 않는다).
+                await end_opening_turn(session)
                 if mode == "handsfree" and FRAME_POLICY == "on_speech" and not state["turn_frame_sent"]:
                     # 이번 턴의 첫 받아쓰기 = 관람객이 말을 시작했다. 그때의 사진 1장을 넘긴다.
                     # (state["heard"]로 판단하지 않는다: 추임새에 Live가 침묵하면 heard가 다음 턴까지 남는다)
@@ -648,13 +725,12 @@ async def live(ws: WebSocket):
                         to_browser.put_nowait(("bytes", part.inline_data.data))  # 24kHz PCM 그대로
             if c.output_transcription and c.output_transcription.text:
                 state["turn_open"] = True
-                text = clean_said(c.output_transcription.text)
-                if text:
-                    state["said"] += text
-                    to_browser.put_nowait(("text", {"type": "said", "text": text}))
+                push_said(feed_said(state, c.output_transcription.text))
             if c.turn_complete:
                 state["turn_open"] = False
                 state["turn_frame_sent"] = False
+                push_said(flush_said(state))
+                await end_opening_turn(session)
                 remember_turn()
                 to_browser.put_nowait(("text", {"type": "turn_complete"}))
                 if going_away:
@@ -668,8 +744,10 @@ async def live(ws: WebSocket):
         announce=False: 아직 ready를 보내기 전(처음 붙기가 실패함)이라 폰에 reconnecting을 알리지 않는다.
         """
         state["session"] = None
+        state["opening_turn"] = False   # 연결이 바뀌면 사진을 더 들고 있지 않는다
         if state["turn_open"]:
             state["turn_open"] = False
+            push_said(flush_said(state))
             remember_turn()  # 반쯤 받은 답도 들려준 만큼은 기록에 남긴다
             to_browser.put_nowait(("text", {"type": "turn_complete"}))
         if announce:
@@ -709,9 +787,23 @@ async def live(ws: WebSocket):
             try:
                 async with client.aio.live.connect(model=LIVE_MODEL, config=config) as session:
                     opened = time.monotonic()
-                    state["session"] = session
                     state["first_frame_sent"] = False   # on_speech: 새 연결마다 첫 사진 1장은 바로 넘긴다
                     resumed = want_resume and had_handle
+                    cue = first_cue(resumed) if first_time else None
+                    if cue:
+                        # 버튼이 없으므로 Live가 먼저 말을 건다(목소리 하나로 통일, 브라우저 음성 인사 없음).
+                        # 다시 붙었지만 대화를 잃었으면 인사 대신 돌아왔다고만 말한다.
+                        #
+                        # state["session"]을 세우기 전에 보낸다. 세우는 순간부터 browser_to_gemini가
+                        # 폰의 마이크 PCM과 사진을 send_realtime_input으로 흘리는데, google-genai
+                        # 2.34.0 live.py의 send_client_content 주의문이 "같은 대화에서 둘을 섞어 쓰는
+                        # 것은 권하지 않으며 예상 밖의 결과가 날 수 있다"고 적고 있다. 인사 신호가
+                        # 먼저 닿도록 순서를 정해 둔다.
+                        state["opening_turn"] = True
+                        await session.send_client_content(
+                            turns=types.Content(role="user", parts=[types.Part(text=cue)]),
+                            turn_complete=True)
+                    state["session"] = session
                     to_browser.put_nowait(("text", {
                         "type": "ready" if first_time else "reconnected",
                         "model": LIVE_MODEL,
@@ -723,13 +815,6 @@ async def live(ws: WebSocket):
                         # 폰이 resume으로 다시 붙었을 때만: 앞 대화를 이었는지
                         **({"resumed": resumed} if first_time and want_resume else {}),
                         **({} if first_time else {"kept_conversation": had_handle})}))
-                    cue = first_cue(resumed) if first_time else None
-                    if cue:
-                        # 버튼이 없으므로 Live가 먼저 말을 건다(목소리 하나로 통일, 브라우저 음성 인사 없음).
-                        # 다시 붙었지만 대화를 잃었으면 인사 대신 돌아왔다고만 말한다.
-                        await session.send_client_content(
-                            turns=types.Content(role="user", parts=[types.Part(text=cue)]),
-                            turn_complete=True)
                     first_time = False
                     fails = 0
                     while True:
