@@ -791,6 +791,84 @@ check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
 (relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY, relay.LIVE_START_SENSITIVITY,
  relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS, relay.PHONE_IDLE_S) = saved_config
 
+# ── 29. 관람 기록 (11/18 저녁) ────────────────────────────────────────────
+print("29. 관람 기록: 켜야 남고, 글자는 한 자도 남지 않는다")
+import tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from server import visit_log  # noqa: E402
+
+
+def visit_log_run(**envs):
+    """환경 변수를 주고 handsfree 한 관람을 돌린 뒤, 남은 기록 줄과 파일 원문을 돌려준다."""
+    folder = tempfile.mkdtemp()
+    saved = {k: os.environ.get(k) for k in
+             ("LIVE_VISIT_LOG", "LIVE_VISIT_DIR", "LIVE_VISIT_SOURCE_KIND", "LIVE_VISIT_SEASON",
+              "LIVE_VISIT_GALLERY")}
+    os.environ.update({"LIVE_VISIT_DIR": folder, **envs})
+    for key in saved:
+        if key not in envs and key != "LIVE_VISIT_DIR":
+            os.environ.pop(key, None)
+    try:
+        run([[
+            [msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])],
+            [msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])],
+            [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
+            [msg(heard="Who painted this and when?"), msg(audio=b"\x01"),
+             msg(said="Kim Hong-do painted it in the late eighteenth century."),
+             msg(interrupted=True), msg(turn_complete=True)],
+        ]], expect=7, first=HANDSFREE, linger=0.4)
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    raw = "".join(path.read_text(encoding="utf-8")
+                  for path in sorted(Path(folder).glob("visits-*.jsonl")))
+    return [json.loads(l) for l in raw.splitlines() if l.strip()], raw, folder
+
+
+rows, raw, folder = visit_log_run()
+check("기본값은 꺼짐이다 — 파일을 만들지 않는다",
+      rows == [] and list(Path(folder).iterdir()) == [], str(list(Path(folder).iterdir())))
+
+rows, raw, _ = visit_log_run(LIVE_VISIT_LOG="team", LIVE_VISIT_SOURCE_KIND="team_rehearsal",
+                             LIVE_VISIT_SEASON="2026-가을", LIVE_VISIT_GALLERY="서화실")
+kinds = [r["event"] for r in rows]
+check("관람 하나가 visit_start로 시작해 visit_end로 끝난다",
+      kinds[:1] == ["visit_start"] and kinds[-1:] == ["visit_end"], str(kinds))
+check("작품 인식이 남는다", any(r["event"] == "artwork_identified" and r["artwork_id"] == ARTWORK
+                            and r["via"] == "function" for r in rows), str(kinds))
+check("unknown은 작품으로 세지 않고 따로 센다",
+      sum(r["event"] == "artwork_identified" for r in rows) == 1
+      and sum(r["event"] == "artwork_unknown" for r in rows) == 1, str(kinds))
+check("비교가 남는다", any(r["event"] == "comparison" and r["comparison_id"] == "C_KHD_BRUEGEL"
+                        and r["via"] == "function" for r in rows), str(kinds))
+check("끼어들기가 남는다", any(r["event"] == "quality" and r["issue"] == "interrupted" for r in rows),
+      str(kinds))
+question = next((r for r in rows if r["event"] == "question"), None)
+check("질문 한 번이 남는다", question is not None and question["artwork_id"] == ARTWORK
+      and question["channel"] == "voice", str(question))
+check("라벨과 결과는 아직 빈 값이다(FE3·BE1 결정 전)",
+      question is not None and question["label"] == "" and question["outcome"] == "", str(question))
+check("첫 음성까지 걸린 시간을 잰다(못 재면 -1)",
+      question is not None and isinstance(question["first_audio_ms"], int), str(question))
+check("시즌·전시실이 들어간다",
+      rows[0]["season_id"] == "2026-가을" and rows[0]["gallery"] == "서화실", str(rows[0]))
+check("관람이 왜 끝났는지 남는다", rows[-1]["reason"] in ("phone_closed", "replaced", "phone_idle"),
+      str(rows[-1]))
+
+for forbidden in ("Who painted this", "Kim Hong-do", "eighteenth century", "France", "adult"):
+    check(f"기록 파일에 {forbidden!r}가 없다", forbidden not in raw)
+check("서버 세션 ID가 기록에 없다", not any("session_id" in r for r in rows))
+check("벽시계 시각은 visit_start의 10분 버킷 하나뿐이다",
+      sum("start_bucket" in r for r in rows) == 1
+      and all(len(r["start_bucket"]) == 16 and r["start_bucket"].endswith("0")
+              for r in rows if "start_bucket" in r), str(rows[0].get("start_bucket")))
+check("모든 줄이 설계에 있는 사건이다", set(kinds) <= set(visit_log.ALLOWED), str(set(kinds)))
+
+
 print()
 if failures:
     print(f"실패 {len(failures)}건: {failures}")
