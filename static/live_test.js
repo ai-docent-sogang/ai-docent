@@ -2,7 +2,7 @@
 //
 // 담당: FE1
 // 같이 보는 파일: live_test.html (화면), live_mic_worklet.js (마이크 16kHz), live_player.js (24kHz 재생),
-//               tools/live_relay_spike.py (중계 서버), docs/FE1_Live_검토.md
+//               tools/live_relay_spike.py (중계 서버), docs/FE1/FE1_Live_검토.md
 //
 // 이 페이지는 Live 전환 가능 여부를 가리기 위한 '시험'이다. 운영 화면이 아니다.
 // 확인하려는 것 네 가지:

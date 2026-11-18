@@ -5,8 +5,9 @@
               prompts.py (도슨트 규칙)
 
 /api/turn과 다른 점: 음성·사진을 받지 않는다. 받아쓰기는 FE1의 브라우저 음성 인식이, 작품 ID는
-FE1(또는 작품 인식 단계)이 정해서 보낸다. 그래서 Gemini에는 그 작품 한 점의 자료만 보내고,
-보내는 양이 적어 /api/turn보다 빠를 것으로 기대한다(응답의 latency_ms로 확인).
+FE1(또는 작품 인식 단계)이 정해서 보낸다. Gemini에는 그 작품 한 점의 자료만 보낸다.
+11/11 측정: 보내는 양을 줄여도 빨라지지 않았다(/api/ask 약 7.9초, 거의 전부 모델이 답을 만드는 시간).
+11/11 회의에서 대화는 Live로 가기로 했고, 이 경로는 Live가 실패할 때의 안전망으로 남긴다.
 
 임시 답변 모드: .env에 ASK_MOCK=1을 넣으면 Gemini를 부르지 않고 고정 답변을 돌려준다.
 FE1이 서버 연결과 화면·음성 흐름을 먼저 만들 때 쓴다. API 키가 없어도 동작한다.
@@ -48,11 +49,18 @@ class AskResponse(BaseModel):
 
 
 def build_artwork_context(art):
-    """작품 한 점의 확인된 사실(key_facts)만 Gemini가 읽을 글로 만든다."""
+    """작품 한 점의 확인된 사실(key_facts)만 Gemini가 읽을 글로 만든다. /api/ask와 Live가 같이 쓴다.
+
+    지정 등급(designation)을 따로 적는다: key_facts의 "designated a Treasure"를 모델이
+    "national treasure"로 말한 사례가 있었다(11/11 방식 비교 채점, Q03).
+    medium은 "Painting surface"로 적는다: "silk"를 인물의 비단 옷으로 말한 사례가 있었다(Q07).
+    """
     facts = "\n".join(f"- {fact}" for fact in art["key_facts"])
+    designation = art.get("designation") or "none recorded"
     return (
         f"ARTWORK: {art['title_en']}\n"
-        f"Artist: {art['artist']}\nDate: {art['date']}\nMedium: {art['medium']}\n"
+        f"Artist: {art['artist']}\nDate: {art['date']}\n"
+        f"Painting surface: {art['medium']}\nDesignation: {designation}\n"
         f"FACTS (the only facts you may use):\n{facts}"
     )
 
