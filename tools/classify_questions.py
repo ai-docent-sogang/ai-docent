@@ -2,7 +2,7 @@
 
 담당: FE1
 같이 보는 파일: docs/FE1/FE1_관람분석_측정계획.md (라벨을 어디에 쓰는지),
-              docs/meeting/요청_2026-11-16_관람분석.md (라벨 목록과 BE1·FE3 경계),
+              docs/FE1/FE1_관람분석_측정계획.md 4장 (라벨 목록과 BE1·FE3 경계),
               data/eval/question_labels_2026-11-17.csv (사람이 붙인 라벨)
 
 무엇을 하고 무엇을 하지 않는가:
