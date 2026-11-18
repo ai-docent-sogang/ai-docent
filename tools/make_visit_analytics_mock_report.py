@@ -6,8 +6,8 @@ from pathlib import Path
 from statistics import mean, median
 
 ROOT = Path(__file__).resolve().parents[1]
-INPUT = ROOT / "docs/examples/visit_analytics_mock.json"
-OUTPUT = ROOT / "docs/FE1_관람분석_모의보고서.md"
+INPUT = ROOT / "docs/FE1/examples/visit_analytics_mock.json"
+OUTPUT = ROOT / "docs/FE1/FE1_관람분석_모의보고서.md"
 
 
 def render(data):

@@ -3,7 +3,7 @@
 담당: FE1
 같이 보는 파일: tools/compare_modes.py (BE1의 방식 비교, 텍스트 질문만 씀),
               tools/live_relay_spike.py (브라우저 ↔ 서버 ↔ Gemini 중계 시험대),
-              docs/FE1_Live_검토.md (이 도구로 얻은 결과와 판단)
+              docs/FE1/FE1_Live_검토.md (이 도구로 얻은 결과와 판단)
 
 BE1의 compare_modes.py는 Live에 질문을 '텍스트'로 보낸다. 이 도구는 '음성'을 보낸다.
 브라우저 음성 인식(static/stt.js)을 Live의 받아쓰기로 대체할 수 있는지가 FE1의 갈림길이므로,
