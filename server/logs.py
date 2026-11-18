@@ -1,4 +1,4 @@
-"""대화마다 응답 시간·인식 결과·오류를 기록하는 자리 (아직 구현 안 됨).
+"""대화마다 응답 시간·인식 결과·오류를 기록하는 자리.
 
 담당: BE2 (docs/역할_가이드.md 4장, 11/12–11/18 "로그 남기기")
 같이 보는 파일: app.py (/api/turn이 끝날 때 여기의 함수를 부르게 될 곳)
@@ -9,3 +9,30 @@
 - 기록 파일은 git에 올리지 않는다(.gitignore의 logs/).
 - 시연 후 이 기록만으로 평균·중앙값 응답 시간을 계산할 수 있어야 한다.
 """
+"""Append turn metadata to a local JSON Lines file."""
+import json
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+from threading import Lock
+
+_LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "turns.jsonl"
+_LOCK = Lock()
+
+
+def record_turn(session_id, latency_ms, *, artwork_id=None, comparison_id=None, error=None):
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "session_id": session_id,
+        "artwork_id": artwork_id,
+        "comparison_id": comparison_id,
+        "latency_ms": latency_ms,
+        "error": error,
+    }
+    try:
+        with _LOCK:
+            _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _LOG_PATH.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(entry) + "\n")
+    except OSError:
+        logging.getLogger(__name__).warning("Turn metadata could not be written")
