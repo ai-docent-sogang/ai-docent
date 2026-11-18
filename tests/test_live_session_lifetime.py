@@ -17,6 +17,8 @@
 """
 import asyncio
 import base64
+import contextlib
+import io
 import json
 import sys
 import threading
@@ -82,11 +84,14 @@ class FakeSession:
         self.sent = []            # send_realtime_input으로 받은 것
         self.client_content = []  # send_client_content로 받은 것(글 질문, 인사 신호)
         self.tool_responses = []  # send_tool_response로 받은 함수 결과
+        self.order = []           # 받은 순서("realtime" / "client") — 둘을 섞어 보내지 않는지 본다
 
     async def send_realtime_input(self, **kw):
+        self.order.append("realtime")
         self.sent.append(kw)
 
     async def send_client_content(self, **kw):
+        self.order.append("client")
         self.client_content.append(kw)
 
     async def send_tool_response(self, *, function_responses):
@@ -590,7 +595,7 @@ check("환경 변수 값이 설정에 들어간다(HIGH, 550, 200)",
       and aad.silence_duration_ms == 550 and aad.prefix_padding_ms == 200, str(aad))
 relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS = saved
 
-print("23. 사진 정책 on_speech: 연결 직후 1장, 말이 시작될 때 최신 1장")
+print("23. 사진 정책 on_speech: 인사 턴이 끝난 뒤 1장, 말이 시작될 때 최신 1장")
 relay.FRAME_POLICY = "on_speech"
 A, B, C = (b"\xff\xd8A", b"\xff\xd8B", b"\xff\xd8C")
 got, fake = run([[
@@ -600,7 +605,9 @@ got, fake = run([[
 ]], expect=6, first=HANDSFREE, linger=0.3, after_ready=[
     {"type": "frame", "jpeg": base64.b64encode(x).decode()} for x in (A, B, C)])
 videos = [x["video"].data for x in fake.session.sent if "video" in x]
-check("연결 직후 첫 사진과, 말이 시작될 때의 최신 사진만 넘긴다", videos == [A, C], str(videos))
+# 인사 턴 동안에는 사진을 들고만 있는다(26번 참고). 이 대본은 인사 턴이 끝나기 전에 관람객이
+# 말을 시작하므로, 그 순간의 최신 사진 C 하나만 넘어간다(앞의 A는 C로 덮인다).
+check("인사 턴에는 사진을 넣지 않고, 말이 시작될 때 최신 1장을 넘긴다", videos == [C], str(videos))
 check("이 정책에서도 report_current_artwork가 동작한다",
       fake.session.tool_responses and fake.session.tool_responses[0].response.get("artwork_id") == ARTWORK
       and "artwork" in types_of(got), str(types_of(got)))
@@ -663,6 +670,69 @@ check("다른 작품의 짧은 제목(Red Fuji)도 무시한다", "comparison" n
 check("짧은 제목은 작가 이름이 있어야 인정한다(INWANG에서)",
       relay.comparison_in_transcript("like Red Fuji", "JS_INWANG") == ""
       and relay.comparison_in_transcript("Hokusai painted Red Fuji", "JS_INWANG") == "C_INWANG_HOKUSAI")
+
+print("26. 인사 턴: 모델 속 글이 자막에 섞여 와도 폰에 보내지 않고 로그에 남긴다")
+# 11/18 멘토 전달본에서 본 증상 그대로. 인사를 하다 말고 함수 호출을 글자로 흘린 뒤 다시 인사했다.
+#   "…what kind of art do you usually enjoy? -=call:report_current_artwork{artwork_id:unknown"
+#   "Welcome to the Joseon painting gallery! …"
+# 같은 날 포트 8055에서 실제 Gemini로 돌려 보니 인사 턴마다 모양만 다른 속 글이 따라왔다
+# ("---(No function call needed…)---", "=====…"). 말소리에는 없고 받아쓰기 길로만 온다.
+LEAK_TURN = [
+    msg(audio=b"\x01\x02"),
+    msg(said="Welcome to the gallery; where are you from, and what kind of art do you usually enjoy?"),
+    msg(said=" -=call:report_current"),          # 조각이 끊겨 온다
+    msg(said="_artwork{artwork_id:unknown"),
+    msg(said="Welcome to the Joseon painting gallery! I'm so pleased you're here."),
+    msg(turn_complete=True),
+]
+
+
+def run_quiet(*a, **kw):
+    """서버 로그를 가로채서 돌린다. (받은 것, 가짜 클라이언트, 서버가 찍은 글)."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        got, fake = run(*a, **kw)
+    return got, fake, buffer.getvalue()
+
+
+got, fake, log = run_quiet([[LEAK_TURN]], expect=4, first=HANDSFREE, linger=0.3)
+said = "".join(g["text"] for g in got if isinstance(g, dict) and g.get("type") == "said")
+check("폰 자막에 함수 호출 글자가 가지 않는다",
+      "call:" not in said and "report_current_artwork" not in said, repr(said))
+check("속 글 앞까지의 인사는 그대로 보낸다",
+      said == "Welcome to the gallery; where are you from, and what kind of art do you usually enjoy?",
+      repr(said))
+check("걸러 낸 글을 서버 로그에 그대로 남긴다",
+      "모델 속 글" in log and "report_current" in log,
+      next((l for l in log.splitlines() if "모델 속 글" in l), "로그에 없다"))
+leak_visit = sessions.get_session(got[0]["session_id"])
+check("관람 기억에도 걸러 낸 글이 들어가지 않는다",
+      leak_visit.history and "call:" not in leak_visit.history[-1]["docent"], str(leak_visit.history)[-120:])
+
+for mark in ("---\n(No function call needed, per instructions to greet first.)---",
+             " =========================================="):
+    got, fake, log = run_quiet([[[msg(said="Welcome to the gallery."), msg(said=mark),
+                                  msg(turn_complete=True)]]], expect=3, first=HANDSFREE, linger=0.3)
+    said = "".join(g["text"] for g in got if isinstance(g, dict) and g.get("type") == "said")
+    check(f"가로줄·등호로 시작하는 속 글도 거른다({mark[:6].strip()!r})",
+          said == "Welcome to the gallery." and "모델 속 글" in log, repr(said))
+
+got, fake, log = run_quiet([[[msg(said="Kim Hong-do - a court painter - drew it."), msg(said=" Report?"),
+                              msg(turn_complete=True)]]], expect=3, first=HANDSFREE, linger=0.3)
+said = "".join(g["text"] for g in got if isinstance(g, dict) and g.get("type") == "said")
+check("보통 말에 든 붙임표·report 라는 낱말은 그대로 둔다",
+      said == "Kim Hong-do - a court painter - drew it. Report?" and "모델 속 글" not in log, repr(said))
+
+print("27. 인사 턴에는 사진을 넣지 않고, 인사 신호를 realtime 입력보다 먼저 보낸다")
+HELLO_JPEG = b"\xff\xd8\xff\xe0one"
+got, fake = run([[
+    WaitClientContent(1, [msg(said="Welcome.")]),       # 인사 신호를 받고서 인사한다
+    [msg(said=" Nice to meet you.", turn_complete=True)],
+]], expect=4, first=HANDSFREE, linger=0.5, after_ready=[
+    {"type": "frame", "jpeg": base64.b64encode(HELLO_JPEG).decode()}])
+check("인사 신호를 realtime 입력보다 먼저 보낸다", fake.session.order[:1] == ["client"], str(fake.session.order))
+videos = [x["video"].data for x in fake.session.sent if "video" in x]
+check("인사 중에 온 사진은 들고 있다가 인사가 끝난 뒤 넘긴다", videos == [HELLO_JPEG], str(videos))
 
 print()
 if failures:
