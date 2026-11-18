@@ -43,7 +43,7 @@ let currentArtwork = "";
 let currentComparison = "";
 let returnScreen = "experience-screen";
 const viewedArtworks = new Map(); // artwork_id => {title,artist,comparisons:Set}. Session memory only.
-const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
+const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 1100;
 
 function showScreen(id) {
   for (const name of ["welcome-screen", "experience-screen", "summary-screen"]) $(name).hidden = name !== id;
