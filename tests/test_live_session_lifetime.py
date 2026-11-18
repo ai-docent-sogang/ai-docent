@@ -856,6 +856,11 @@ check("첫 음성까지 걸린 시간을 잰다(못 재면 -1)",
       question is not None and isinstance(question["first_audio_ms"], int), str(question))
 check("시즌·전시실이 들어간다",
       rows[0]["season_id"] == "2026-가을" and rows[0]["gallery"] == "서화실", str(rows[0]))
+check("연결 직후 인사는 질문으로 세지 않는다",
+      sum(r["event"] == "question" for r in rows) == 1, str(kinds))
+usages = [r for r in rows if r["event"] == "usage"]
+check("사용량은 턴마다의 양이다(누적을 그대로 적지 않는다)",
+      all(u["total"] >= 0 for u in usages), str(usages))
 check("관람이 왜 끝났는지 남는다", rows[-1]["reason"] in ("phone_closed", "replaced", "phone_idle"),
       str(rows[-1]))
 

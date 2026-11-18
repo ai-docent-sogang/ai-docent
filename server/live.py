@@ -551,7 +551,9 @@ async def live(ws: WebSocket):
              # 관람 기록용. heard_at: 이번 턴에 질문이 들어온 마지막 시각(받아쓰기 조각 또는 글).
              # first_audio_at: 이번 턴의 첫 답변 소리가 나간 시각. 둘의 차이가 first_audio_ms다.
              # channel: 이번 턴을 글로 물었는지 말로 물었는지. usage: 이번 턴의 마지막 사용량.
-             "heard_at": None, "first_audio_at": None, "channel": "", "usage": None}
+             # usage_seen: 지금까지 Gemini가 알려 준 누적 사용량(11/18 실측으로 누적임을 확인).
+             "heard_at": None, "first_audio_at": None, "channel": "", "usage": None,
+             "usage_seen": {}, "speech_end_at": None}
 
     async def send_frame(session, jpeg):
         await session.send_realtime_input(video=types.Blob(data=jpeg, mime_type="image/jpeg"))
@@ -585,6 +587,25 @@ async def live(ws: WebSocket):
     # 붙여 두면 폰 전송이 느릴 때 Gemini 쪽 소켓을 읽지 못해 연결이 위험해진다(11/11에 끊겼다).
     to_browser = asyncio.Queue()
 
+    def first_audio_ms():
+        """관람객이 말을 멈춘 뒤 첫 답변 소리가 나갈 때까지의 밀리초. 못 재면 -1.
+
+        기준은 Gemini가 "말이 끝났다"고 알려 준 시각(voice_activity)이고, 그 신호가 없으면
+        이번 턴에 마지막으로 받은 받아쓰기 조각의 시각을 쓴다. 받아쓰기는 늦게 오므로 답변이
+        그보다 먼저 시작되는 일이 있다 — 11/18 실측에서 그렇게 해서 123ms라는 거짓 값이 나왔다.
+        그런 턴은 잴 수 없는 것으로 보고 -1을 적는다. 작은 수를 적으면 평균이 거짓이 된다.
+        """
+        audio_at = state["first_audio_at"]
+        base = state["speech_end_at"] or state["heard_at"]
+        if not base or not audio_at:
+            return -1
+        gap_ms = int((audio_at - base) * 1000)
+        # 받아쓰기를 기준으로 쓴 턴에서 간격이 비현실적으로 짧으면(받아쓰기가 답보다 늦게 온 것)
+        # 잴 수 없는 것으로 둔다. 실측에서 함수를 거치지 않는 턴도 1.2초 아래로 내려가지 않았다.
+        if state["speech_end_at"] is None and gap_ms < 300:
+            return -1
+        return gap_ms
+
     def remember_turn():
         """이번 턴을 관람 기억에 넣는다. BE1의 session.record_turn을 부르기만 한다.
 
@@ -608,16 +629,15 @@ async def live(ws: WebSocket):
         visit.record_turn(state["heard"].strip(), SimpleNamespace(
             artwork_id=state["artwork_id"], comparison_id=state["comparison_id"], reply=said))
         # 관람 기록: 질문 한 번. 글자는 넣지 않는다(기록 모듈이 거부한다).
-        # first_audio_ms는 질문이 들어온 마지막 순간부터 첫 답변 소리가 나갈 때까지다.
+        # 관람객이 아무 말도 하지 않은 턴(연결 직후 인사)은 질문으로 세지 않는다.
         # label·outcome은 아직 빈 값이다 — 라벨 체계(FE3)와 no_source 판정(BE1)을 정해야 채운다.
-        heard_at, audio_at = state["heard_at"], state["first_audio_at"]
-        vlog.event("question", artwork_id=state["artwork_id"],
-                   channel=state["channel"] or "voice", label="", outcome="",
-                   first_audio_ms=int((audio_at - heard_at) * 1000)
-                   if heard_at and audio_at and audio_at >= heard_at else -1)
+        if state["heard"].strip():
+            vlog.event("question", artwork_id=state["artwork_id"],
+                       channel=state["channel"] or "voice", label="", outcome="",
+                       first_audio_ms=first_audio_ms())
         state["heard"] = state["said"] = state["comparison_id"] = ""
         state["comparison_called"] = False
-        state["heard_at"] = state["first_audio_at"] = None
+        state["heard_at"] = state["first_audio_at"] = state["speech_end_at"] = None
         state["channel"] = ""
 
     def answer_tool_call(call):
@@ -773,6 +793,13 @@ async def live(ws: WebSocket):
                     responses.append(types.FunctionResponse(id=call.id, name=call.name, response=result))
                 if responses:
                     await session.send_tool_response(function_responses=responses)
+            activity = getattr(m, "voice_activity", None)
+            if activity is not None:
+                kind = getattr(activity, "voice_activity_type", None)
+                name = str(getattr(kind, "name", kind) or "")
+                print(f"[live] 말 신호: {name}")   # 11/18: 이 신호가 오는지 확인하는 중
+                if "END" in name.upper():
+                    state["speech_end_at"] = time.monotonic()
             if getattr(m, "usage_metadata", None) is not None:
                 # 턴마다 여러 번 올 수 있어 마지막 것만 들고 있다가 턴이 끝날 때 한 번 적는다.
                 # 이 숫자가 턴마다의 양인지 세션 누적인지는 아직 확인하지 않았다(실측 필요).
@@ -815,7 +842,12 @@ async def live(ws: WebSocket):
                 await end_opening_turn(session)
                 remember_turn()
                 if state["usage"] is not None:
-                    vlog.event("usage", **visit_log.usage_fields(state["usage"]))
+                    # Gemini가 주는 숫자는 세션 누적이다(11/18 실측: total 2053→2522→3849→4166).
+                    # 그대로 적으면 턴마다 더할 수 없으니 앞 턴과의 차이를 적는다.
+                    now_usage = visit_log.usage_fields(state["usage"])
+                    vlog.event("usage", **{k: max(0, v - state["usage_seen"].get(k, 0))
+                                           for k, v in now_usage.items()})
+                    state["usage_seen"] = now_usage
                     state["usage"] = None
                 to_browser.put_nowait(("text", {"type": "turn_complete"}))
                 if going_away:
