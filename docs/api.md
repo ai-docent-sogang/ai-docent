@@ -108,7 +108,7 @@ AGENTS.md가 클라이언트 코드에 API 키를 넣는 것을 금지하므로 
 | 다시 붙을 때 1회 (handsfree) | 폰 화면 꺼짐·네트워크 끊김 뒤 같은 관람으로 | 위와 같고 `"resume": true`를 더합니다. `session_id`는 앞 연결의 `ready`에서 받은 값 |
 | 연결 직후 1회 (push) | 어느 작품인지, 프로필, 관람 세션 | 텍스트 `{"artwork_id": "KHD_SSIREUM", "profile": {...}, "session_id": "..."}` |
 | 대화하는 내내 (handsfree) | 마이크 소리. **말이 없을 때도 계속** | 바이너리, 16kHz 모노 PCM16 |
-| 3초마다 (handsfree) | 카메라 사진 | 텍스트 `{"type": "frame", "jpeg": "<base64, 가로 최대 768px, 화질 0.7>"}` |
+| 3초마다 (handsfree) | 카메라 사진 | 텍스트 `{"type": "frame", "jpeg": "<base64, 가로 최대 1100px, 화질 0.7>"}` — 크기·간격·화질의 단일 출처는 `static/live_conversation.js`의 `FRAME_INTERVAL_MS`·`FRAME_MAX_WIDTH`·`FRAME_QUALITY`다. `/api/turn` 경로도 같은 값을 가져다 쓴다 |
 | 글로 물을 때 (handsfree) | 글 질문 | 텍스트 `{"type": "text", "text": "..."}` |
 | 5초마다 (handsfree) | 살아 있다는 신호 | 텍스트 `{"type": "ping"}` — 서버는 받기만 하고 Gemini로 보내지 않습니다 |
 | 버튼 누름 / 누르는 동안 / 뗌 (push) | 말 시작 / 마이크 소리 / 말 끝 | `{"type": "speech_start"}` / 바이너리 16kHz PCM16 / `{"type": "speech_end"}` |
