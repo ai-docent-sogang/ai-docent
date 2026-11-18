@@ -40,7 +40,7 @@ CLOSED_1008 = APIError(1008, {"error": {"code": 1008, "message": "Session closed
 
 # ── Gemini 자리에 놓는 가짜 ───────────────────────────────────────────────
 def msg(*, handle=None, resumable=None, go_away=None, audio=None, said=None,
-        heard=None, turn_complete=False, interrupted=False, calls=None):
+        heard=None, turn_complete=False, interrupted=False, calls=None, usage=None):
     """중계가 보는 모양만 맞춘 서버 메시지 한 개. calls는 [(이름, 인자), ...] 함수 호출."""
     content = None
     if audio or said or heard or turn_complete or interrupted:
@@ -61,6 +61,7 @@ def msg(*, handle=None, resumable=None, go_away=None, audio=None, said=None,
         tool_call=SimpleNamespace(function_calls=[
             SimpleNamespace(id=f"call-{i}", name=name, args=args) for i, (name, args) in enumerate(calls)
         ]) if calls else None,
+        usage_metadata=usage,
     )
 
 
@@ -704,9 +705,13 @@ check("폰 자막에 함수 호출 글자가 가지 않는다",
 check("속 글 앞까지의 인사는 그대로 보낸다",
       said == "Welcome to the gallery; where are you from, and what kind of art do you usually enjoy?",
       repr(said))
-check("걸러 낸 글을 서버 로그에 그대로 남긴다",
-      "모델 속 글" in log and "report_current" in log,
-      next((l for l in log.splitlines() if "모델 속 글" in l), "로그에 없다"))
+leak_line = next((l for l in log.splitlines() if "모델 속 글" in l), "로그에 없다")
+check("왜 걸렀는지는 서버 로그에 남는다", "report_current" in leak_line, leak_line)
+# 걸러 낸 글의 뒷부분은 도슨트가 관람객에게 한 말이다. 출력을 파일로 넘기면 저장이 되므로
+# (AGENTS.md: 음성은 처리에만 쓰고 저장하지 않는다) 길이만 남기고 글자는 남기지 않는다.
+check("도슨트가 한 말은 서버 로그에 남지 않는다",
+      "Joseon painting gallery" not in log and "pleased you're here" not in log, leak_line)
+check("잘라 낸 뒷부분의 길이를 적는다", "뒤에 83자" in leak_line, leak_line)
 leak_visit = sessions.get_session(got[0]["session_id"])
 check("관람 기억에도 걸러 낸 글이 들어가지 않는다",
       leak_visit.history and "call:" not in leak_visit.history[-1]["docent"], str(leak_visit.history)[-120:])
@@ -799,6 +804,15 @@ from pathlib import Path  # noqa: E402
 from server import visit_log  # noqa: E402
 
 
+class FakeUsage:
+    """Gemini의 usage_metadata 모양만 맞춘 것. 숫자는 세션 누적이다(11/18 실측)."""
+
+    def __init__(self, total):
+        self.total_token_count = total
+        self.prompt_tokens_details = ()
+        self.response_tokens_details = ()
+
+
 def visit_log_run(**envs):
     """환경 변수를 주고 handsfree 한 관람을 돌린 뒤, 남은 기록 줄과 파일 원문을 돌려준다."""
     folder = tempfile.mkdtemp()
@@ -811,13 +825,15 @@ def visit_log_run(**envs):
             os.environ.pop(key, None)
     try:
         run([[
+            # 인사 턴. 아직 작품을 모른다 — 이 턴의 usage에는 작품 ID가 빈 값이어야 한다.
+            [msg(said="Welcome to the gallery."), msg(usage=FakeUsage(2053)), msg(turn_complete=True)],
             [msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])],
             [msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])],
             [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
             [msg(heard="Who painted this and when?"), msg(audio=b"\x01"),
              msg(said="Kim Hong-do painted it in the late eighteenth century."),
-             msg(interrupted=True), msg(turn_complete=True)],
-        ]], expect=7, first=HANDSFREE, linger=0.4)
+             msg(usage=FakeUsage(2522)), msg(interrupted=True), msg(turn_complete=True)],
+        ]], expect=9, first=HANDSFREE, linger=0.4)
     finally:
         for key, value in saved.items():
             if value is None:
@@ -859,8 +875,14 @@ check("시즌·전시실이 들어간다",
 check("연결 직후 인사는 질문으로 세지 않는다",
       sum(r["event"] == "question" for r in rows) == 1, str(kinds))
 usages = [r for r in rows if r["event"] == "usage"]
+check("턴이 끝날 때마다 usage가 남는다", len(usages) == 2, str(usages))
 check("사용량은 턴마다의 양이다(누적을 그대로 적지 않는다)",
-      all(u["total"] >= 0 for u in usages), str(usages))
+      [u["total"] for u in usages] == [2053, 469], str(usages))
+# 작품 ID가 없으면 "어느 작품 설명이 비싼가"를 알 수 없다. 관람 전체 비용만 나온다.
+check("작품을 아는 턴의 usage에 작품 ID가 들어간다",
+      len(usages) == 2 and usages[1].get("artwork_id") == ARTWORK, str(usages))
+check("작품을 모르는 인사 턴은 작품 ID가 빈 값이다",
+      len(usages) == 2 and usages[0].get("artwork_id") == "", str(usages))
 check("관람이 왜 끝났는지 남는다", rows[-1]["reason"] in ("phone_closed", "replaced", "phone_idle"),
       str(rows[-1]))
 
