@@ -78,6 +78,7 @@ from .gemini_client import make_client
 from .live_context import (MAX_COMPARISON_OPTIONS, REGION_TAGS, build_live_instruction,
                            comparison_block, profile_block)
 from .prompts import LIVE_INSTRUCTION
+from . import visit_log
 
 router = APIRouter()
 artworks = load_artworks()
@@ -494,6 +495,12 @@ async def live(ws: WebSocket):
         return
     profile = first.get("profile") or {}
 
+    # 관람 기록(FE1). 기본값은 꺼짐이고, LIVE_VISIT_LOG가 team·visitor일 때만 파일을 만든다.
+    # 꺼져 있으면 아무것도 하지 않는 기록기가 와서 아래 vlog.event(...) 줄은 그냥 지나간다.
+    # 넣을 수 있는 칸은 server/visit_log.py의 ALLOWED에 적혀 있다 — 들은 말·한 말은 넣을 칸이 없다.
+    vlog = visit_log.start(mode=mode, model=LIVE_MODEL, voice=LIVE_VOICE,
+                           ui_lang=str(profile.get("language") or "en")[:16])
+
     # 관람 기억. 폰이 /api/session에서 받은 session_id를 보내면 그 관람에 이어 쓴다. 없거나
     # 서버를 다시 켜서 사라졌으면 새로 만들고 ready에 담아 돌려준다(폰이 요약 화면에 쓴다).
     visit = sessions.get_session(first.get("session_id") or "") or sessions.create_session()
@@ -540,7 +547,13 @@ async def live(ws: WebSocket):
              # 받아쓰기 거르기: 아직 들고 있는 꼬리, 걸러 낸 모델 속 글(턴이 끝나면 로그에 적는다)
              "said_hold": "", "said_leak": "",
              # 인사 턴이 아직 끝나지 않았다(handsfree). 그동안 사진은 들고만 있는다.
-             "opening_turn": False}
+             "opening_turn": False,
+             # 관람 기록용. heard_at: 이번 턴에 질문이 들어온 마지막 시각(받아쓰기 조각 또는 글).
+             # first_audio_at: 이번 턴의 첫 답변 소리가 나간 시각. 둘의 차이가 first_audio_ms다.
+             # channel: 이번 턴을 글로 물었는지 말로 물었는지. usage: 이번 턴의 마지막 사용량.
+             # usage_seen: 지금까지 Gemini가 알려 준 누적 사용량(11/18 실측으로 누적임을 확인).
+             "heard_at": None, "first_audio_at": None, "channel": "", "usage": None,
+             "usage_seen": {}, "speech_end_at": None}
 
     async def send_frame(session, jpeg):
         await session.send_realtime_input(video=types.Blob(data=jpeg, mime_type="image/jpeg"))
@@ -574,6 +587,31 @@ async def live(ws: WebSocket):
     # 붙여 두면 폰 전송이 느릴 때 Gemini 쪽 소켓을 읽지 못해 연결이 위험해진다(11/11에 끊겼다).
     to_browser = asyncio.Queue()
 
+    def first_audio_ms():
+        """관람객이 말을 멈춘 뒤 첫 답변 소리가 나갈 때까지의 밀리초. 못 재면 -1.
+
+        기준은 Gemini가 "말이 끝났다"고 알려 준 시각(voice_activity)이고, 그 신호가 없으면
+        이번 턴에 마지막으로 받은 받아쓰기 조각의 시각을 쓴다. 받아쓰기는 늦게 오므로 답변이
+        그보다 먼저 시작되는 일이 있다 — 11/18 실측에서 그렇게 해서 123ms라는 거짓 값이 나왔다.
+        그런 턴은 잴 수 없는 것으로 보고 -1을 적는다. 작은 수를 적으면 평균이 거짓이 된다.
+
+        **이 숫자는 관람객이 기다린 시간보다 작다.** 11/18 실측에서 voice_activity 신호는
+        한 번도 오지 않았고(두 번의 왕복, 0건), 그래서 늘 받아쓰기를 기준으로 쓴다. 같은 턴을
+        폰 쪽에서 재면 943ms/1646ms인 것이 1932ms/2481ms였다 — 약 1초 낮게 나온다. 턴 사이를
+        견주는 데는 쓸 수 있지만, "관람객이 몇 초 기다렸다"로 말하면 안 된다. 제대로 재려면
+        voice_activity가 오게 되거나(Google 쪽), 폰이 말이 끝난 시각을 보내 줘야 한다.
+        """
+        audio_at = state["first_audio_at"]
+        base = state["speech_end_at"] or state["heard_at"]
+        if not base or not audio_at:
+            return -1
+        gap_ms = int((audio_at - base) * 1000)
+        # 받아쓰기를 기준으로 쓴 턴에서 간격이 비현실적으로 짧으면(받아쓰기가 답보다 늦게 온 것)
+        # 잴 수 없는 것으로 둔다. 실측에서 함수를 거치지 않는 턴도 1.2초 아래로 내려가지 않았다.
+        if state["speech_end_at"] is None and gap_ms < 300:
+            return -1
+        return gap_ms
+
     def remember_turn():
         """이번 턴을 관람 기억에 넣는다. BE1의 session.record_turn을 부르기만 한다.
 
@@ -592,10 +630,21 @@ async def live(ws: WebSocket):
                 to_browser.put_nowait(("text", {
                     "type": "comparison", "comparison_id": cid, "artwork_id": state["artwork_id"],
                     "source": "transcript"}))
+                vlog.event("comparison", artwork_id=state["artwork_id"], comparison_id=cid,
+                           via="transcript")
         visit.record_turn(state["heard"].strip(), SimpleNamespace(
             artwork_id=state["artwork_id"], comparison_id=state["comparison_id"], reply=said))
+        # 관람 기록: 질문 한 번. 글자는 넣지 않는다(기록 모듈이 거부한다).
+        # 관람객이 아무 말도 하지 않은 턴(연결 직후 인사)은 질문으로 세지 않는다.
+        # label·outcome은 아직 빈 값이다 — 라벨 체계(FE3)와 no_source 판정(BE1)을 정해야 채운다.
+        if state["heard"].strip():
+            vlog.event("question", artwork_id=state["artwork_id"],
+                       channel=state["channel"] or "voice", label="", outcome="",
+                       first_audio_ms=first_audio_ms())
         state["heard"] = state["said"] = state["comparison_id"] = ""
         state["comparison_called"] = False
+        state["heard_at"] = state["first_audio_at"] = state["speech_end_at"] = None
+        state["channel"] = ""
 
     def answer_tool_call(call):
         """Live의 함수 호출 하나에 돌려줄 결과를 만들고, 폰에 알릴 것이 있으면 줄에 넣는다."""
@@ -605,10 +654,12 @@ async def live(ws: WebSocket):
             found = artworks.get(artwork_id)
             if found is None:
                 # unknown이거나 목록 밖의 값. 지금 작품을 지우지 않는다(잠깐 다른 곳을 비춘 경우).
+                vlog.event("artwork_unknown", via="function")
                 return {"artwork_id": UNKNOWN,
                         "instruction": "You cannot tell which painting is in view. Do not describe any "
                                        "painting. Kindly ask the visitor to point the camera at the painting."}
             state["artwork_id"] = artwork_id
+            vlog.event("artwork_identified", artwork_id=artwork_id, via="function")
             save_resume()
             used = list(visit.used_comparison_ids) + ([state["comparison_id"]] if state["comparison_id"] else [])
             to_browser.put_nowait(("text", {
@@ -634,6 +685,8 @@ async def live(ws: WebSocket):
             to_browser.put_nowait(("text", {
                 "type": "comparison", "comparison_id": comparison_id, "artwork_id": pair["artwork_id"],
                 "source": "function"}))
+            vlog.event("comparison", artwork_id=pair["artwork_id"], comparison_id=comparison_id,
+                       via="function")
             return {"ok": True, "comparison_id": comparison_id,
                     "foreign_painting": f"{pair['foreign_title']} by {pair['foreign_artist']} "
                                         f"({pair['foreign_date']}, {pair['foreign_collection']})",
@@ -707,6 +760,8 @@ async def live(ws: WebSocket):
                         if FRAME_POLICY == "on_speech":
                             await send_held_frame(session)   # 질문하는 순간의 사진
                         state["heard"] += text
+                        state["channel"] = "text"
+                        state["heard_at"] = time.monotonic()
                         await session.send_client_content(
                             turns=types.Content(role="user", parts=[types.Part(text=text)]),
                             turn_complete=True)
@@ -744,6 +799,16 @@ async def live(ws: WebSocket):
                     responses.append(types.FunctionResponse(id=call.id, name=call.name, response=result))
                 if responses:
                     await session.send_tool_response(function_responses=responses)
+            activity = getattr(m, "voice_activity", None)
+            if activity is not None:
+                kind = getattr(activity, "voice_activity_type", None)
+                name = str(getattr(kind, "name", kind) or "")
+                if "END" in name.upper():
+                    state["speech_end_at"] = time.monotonic()
+            if getattr(m, "usage_metadata", None) is not None:
+                # 턴마다 여러 번 올 수 있어 마지막 것만 들고 있다가 턴이 끝날 때 한 번 적는다.
+                # 이 숫자가 턴마다의 양인지 세션 누적인지는 아직 확인하지 않았다(실측 필요).
+                state["usage"] = m.usage_metadata
             c = m.server_content
             if c is None:
                 continue
@@ -752,6 +817,7 @@ async def live(ws: WebSocket):
                 push_said(flush_said(state))
                 await end_opening_turn(session)
                 to_browser.put_nowait(("text", {"type": "interrupted"}))
+                vlog.event("quality", issue="interrupted")
             if c.input_transcription and c.input_transcription.text:
                 # 관람객이 말을 시작했으면 인사 턴은 끝난 것으로 본다(사진을 더 들고 있지 않는다).
                 await end_opening_turn(session)
@@ -761,11 +827,15 @@ async def live(ws: WebSocket):
                     state["turn_frame_sent"] = True
                     await send_held_frame(session)
                 state["heard"] += c.input_transcription.text
+                state["heard_at"] = time.monotonic()
+                state["channel"] = state["channel"] or "voice"
                 to_browser.put_nowait(("text", {"type": "heard", "text": c.input_transcription.text}))
             if c.model_turn:
                 state["turn_open"] = True
                 for part in c.model_turn.parts or []:
                     if part.inline_data and part.inline_data.data:
+                        if state["first_audio_at"] is None:
+                            state["first_audio_at"] = time.monotonic()
                         to_browser.put_nowait(("bytes", part.inline_data.data))  # 24kHz PCM 그대로
             if c.output_transcription and c.output_transcription.text:
                 state["turn_open"] = True
@@ -776,6 +846,14 @@ async def live(ws: WebSocket):
                 push_said(flush_said(state))
                 await end_opening_turn(session)
                 remember_turn()
+                if state["usage"] is not None:
+                    # Gemini가 주는 숫자는 세션 누적이다(11/18 실측: total 2053→2522→3849→4166).
+                    # 그대로 적으면 턴마다 더할 수 없으니 앞 턴과의 차이를 적는다.
+                    now_usage = visit_log.usage_fields(state["usage"])
+                    vlog.event("usage", **{k: max(0, v - state["usage_seen"].get(k, 0))
+                                           for k, v in now_usage.items()})
+                    state["usage_seen"] = now_usage
+                    state["usage"] = None
                 to_browser.put_nowait(("text", {"type": "turn_complete"}))
                 if going_away:
                     return "go_away"
@@ -797,6 +875,7 @@ async def live(ws: WebSocket):
         if announce:
             to_browser.put_nowait(("text", {
                 "type": "reconnecting", "kept_conversation": kept_conversation}))
+            vlog.event("quality", issue="reconnect", kept_conversation=kept_conversation)
 
     def first_cue(resumed):
         """처음 붙었을 때 Live에 보낼 신호. 대화를 이었으면 없음."""
@@ -859,6 +938,8 @@ async def live(ws: WebSocket):
                         # 폰이 resume으로 다시 붙었을 때만: 앞 대화를 이었는지
                         **({"resumed": resumed} if first_time and want_resume else {}),
                         **({} if first_time else {"kept_conversation": had_handle})}))
+                    if first_time and want_resume and resumed:
+                        vlog.event("quality", issue="resumed", kept_conversation=True)
                     first_time = False
                     fails = 0
                     while True:
@@ -908,6 +989,7 @@ async def live(ws: WebSocket):
             idle = time.monotonic() - state["last_input"]
             if idle >= PHONE_IDLE_S:
                 print(f"[live] 폰이 {idle:.0f}초 동안 아무것도 보내지 않아 죽은 연결로 보고 닫는다({sid[:8]})")
+                vlog.event("quality", issue="phone_idle_close")
                 return
             await asyncio.sleep(min(PHONE_IDLE_S - idle, 1.0))
 
@@ -940,6 +1022,10 @@ async def live(ws: WebSocket):
             entry["updated"] = time.time()
         if active_connections.get(sid) is my_kick:
             del active_connections[sid]
+        # 관람 기록을 닫는다. 왜 끝났는지만 남긴다(세션 ID는 남기지 않는다).
+        vlog.end(reason="phone_idle" if (phone_silent is not None and phone_silent.done()
+                                         and not phone_silent.cancelled())
+                 else "replaced" if kicked.is_set() else "phone_closed")
     print(f"[live] 폰 연결 끝({sid[:8]}, {mode}). 저장된 핸들 "
           f"{'있음' if (resume_store.get(sid) or {}).get('handle') else '없음'}")
     if phone_silent is not None and phone_silent.done() and not phone_silent.cancelled():
