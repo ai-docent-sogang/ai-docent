@@ -403,7 +403,11 @@ art_result = responses[0].response
 check("작품 결과에 확인된 사실이 들어간다", "FACTS (the only facts you may use)" in art_result["artwork"])
 check("작품 결과에 비교 후보와 그 ID가 들어간다",
       "COMPARISON OPTIONS" in art_result["comparison_options"]
-      and set(art_result["comparison_ids"]) == {"C_KHD_BRUEGEL", "C_KHD_HOKUSAI_MANGA"}, str(art_result.get("comparison_ids")))
+      # ID를 여기 적어 두지 않는다. 예원님이 비교쌍을 늘리면 이 시험만 깨지고, 깨진 사람은
+      # 왜 깨졌는지 알기 어렵다(11/18에 C_KHD_HOKUSAI_MANGA가 ..._SUMO로 바뀌어 실제로 깨졌다).
+      and set(art_result["comparison_ids"]) == {
+          c["comparison_id"] for c in relay.verified_comparisons.values()
+          if c["artwork_id"] == ARTWORK}, str(art_result.get("comparison_ids")))
 check("다른 작품의 비교쌍은 거절한다", responses[1].response.get("ok") is False, str(responses[1].response))
 check("지금 작품의 검증된 비교쌍은 받는다", responses[2].response.get("ok") is True
       and responses[2].response.get("similarities"), str(responses[2].response)[:120])
