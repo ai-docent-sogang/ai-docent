@@ -32,7 +32,14 @@ from google.genai.errors import APIError
 
 import server.live as relay
 import server.session as sessions
+from server import live_config as settings
 from server.app import app as server_app
+from server.live_conversation import ranked_comparison_ids
+from server.live_transcript import clean_said, comparison_in_transcript
+
+verified_comparisons = {
+    c["comparison_id"]: c for c in relay.comparisons
+    if c.get("verification_status", "").strip().lower() == "verified"}
 
 ARTWORK = "KHD_SSIREUM"
 CLOSED_1008 = APIError(1008, {"error": {"code": 1008, "message": "Session closed due to client inactivity"}})
@@ -325,8 +332,8 @@ check("요청-응답용 규칙을 쓰지 않는다", "Do not greet or welcome th
 print("9. 목소리(LIVE_VOICE, 없으면 Kore)")
 got, fake = run([[[msg(heard="hi", turn_complete=True)]]], expect=3)
 voice = fake.configs[0].speech_config.voice_config.prebuilt_voice_config.voice_name
-check("push 모드 설정에 목소리가 들어간다", voice == relay.LIVE_VOICE, str(voice))
-check("ready에 목소리 이름이 온다", got[0].get("voice") == relay.LIVE_VOICE, str(got[0]))
+check("push 모드 설정에 목소리가 들어간다", voice == settings.LIVE_VOICE, str(voice))
+check("ready에 목소리 이름이 온다", got[0].get("voice") == settings.LIVE_VOICE, str(got[0]))
 check("push 모드 ready에 mode가 push로 온다", got[0].get("mode") == "push", str(got[0]))
 check("push 모드는 먼저 말을 걸지 않는다", fake.session.client_content == [])
 
@@ -345,14 +352,14 @@ enum = cfg.tools[0].function_declarations[0].parameters.properties["artwork_id"]
 check("작품 함수 값은 11개 ID + unknown", len(enum) == 12 and "unknown" in enum and ARTWORK in enum, str(enum))
 check("압축·재개 설정을 그대로 쓴다(영상이 섞이면 압축 없이 2분)",
       cfg.context_window_compression is not None and cfg.session_resumption is not None)
-check("같은 목소리를 쓴다", cfg.speech_config.voice_config.prebuilt_voice_config.voice_name == relay.LIVE_VOICE)
+check("같은 목소리를 쓴다", cfg.speech_config.voice_config.prebuilt_voice_config.voice_name == settings.LIVE_VOICE)
 hf_instruction = fake.instructions[0]
 check("지시문에 BE1 규칙·프로필·11점 후보·함수 규칙이 들어간다",
       "Fact rules" in hf_instruction and "VISITOR PROFILE" in hf_instruction and "France" in hf_instruction
       and "EXHIBITION" in hf_instruction and "report_current_artwork" in hf_instruction, hf_instruction[:80])
 check("연결되면 Live가 먼저 인사하게 신호를 보낸다",
       len(fake.session.client_content) == 1
-      and relay.GREETING_CUE in fake.session.client_content[0]["turns"].parts[0].text)
+      and settings.GREETING_CUE in fake.session.client_content[0]["turns"].parts[0].text)
 greet_visit = sessions.get_session(got[0]["session_id"])
 check("인사 신호를 관람객 말로 기록하지 않는다",
       greet_visit.history and greet_visit.history[-1]["visitor"] == "", str(greet_visit.history))
@@ -406,7 +413,7 @@ check("작품 결과에 비교 후보와 그 ID가 들어간다",
       # ID를 여기 적어 두지 않는다. 예원님이 비교쌍을 늘리면 이 시험만 깨지고, 깨진 사람은
       # 왜 깨졌는지 알기 어렵다(11/18에 C_KHD_HOKUSAI_MANGA가 ..._SUMO로 바뀌어 실제로 깨졌다).
       and set(art_result["comparison_ids"]) == {
-          c["comparison_id"] for c in relay.verified_comparisons.values()
+          c["comparison_id"] for c in verified_comparisons.values()
           if c["artwork_id"] == ARTWORK}, str(art_result.get("comparison_ids")))
 check("다른 작품의 비교쌍은 거절한다", responses[1].response.get("ok") is False, str(responses[1].response))
 check("지금 작품의 검증된 비교쌍은 받는다", responses[2].response.get("ok") is True
@@ -419,7 +426,7 @@ check("폰에 comparison은 받은 것 하나만 보낸다",
       == [("C_KHD_BRUEGEL", ARTWORK, "function")], str(comps))
 # 화면이 작품·비교 정보를 베껴 두지 않게 서버가 보여 줄 값을 같이 보낸다(11/18).
 # 베낀 목록은 예원님이 CSV를 늘릴 때마다 어긋났다. 빠지면 요약에서 비교가 조용히 사라진다.
-pair = relay.verified_comparisons["C_KHD_BRUEGEL"]
+pair = verified_comparisons["C_KHD_BRUEGEL"]
 check("artwork에 작가를 같이 보낸다(화면이 작품 목록을 베끼지 않게)",
       arts[0].get("artist") == relay.artworks[ARTWORK]["artist"], str(arts[0]))
 check("comparison에 외국 작품의 제목·작가·소장처·링크를 같이 보낸다",
@@ -484,7 +491,7 @@ cue = fake.session.client_content[0]["turns"].parts[0].text if fake.session.clie
 check("핸들 없이 붙는다", fake.handles[0] is None, str(fake.handles))
 check("ready.resumed=false", got[0].get("resumed") is False, str(got[0]))
 check("처음 인사가 아니라 다시 연결됐다는 신호를 보낸다",
-      cue.startswith(relay.RECONNECT_CUE) and relay.GREETING_CUE not in cue, cue[:80])
+      cue.startswith(settings.RECONNECT_CUE) and settings.GREETING_CUE not in cue, cue[:80])
 
 print("18. resume: 2시간 지난 핸들은 버리고, 저장된 작품 사실을 넘긴다")
 relay.resume_store[SID]["updated"] -= relay.HANDLE_TTL_S + 1
@@ -578,8 +585,8 @@ def watch_close(first, pings_for=0.0, wait=4.0, script=None):
 
 
 print("21. 폰이 아무것도 보내지 않으면 죽은 연결로 보고 닫는다(handsfree)")
-saved_idle = relay.PHONE_IDLE_S
-relay.PHONE_IDLE_S = 0.6
+saved_idle = settings.PHONE_IDLE_S
+settings.PHONE_IDLE_S = 0.6
 v = sessions.create_session()
 out, fake = watch_close({"mode": "handsfree", "session_id": v.session_id})
 check("입력이 없으면 닫는다(코드 4001)", out.get("code") == 4001, str(out))
@@ -594,7 +601,7 @@ check("ping은 Gemini로 보내지 않는다", fake.session.sent == [] and fake.
       str(fake.session.sent)[:100])
 out, fake = watch_close({"artwork_id": ARTWORK}, wait=1.5)
 check("push 모드는 입력이 없어도 닫지 않는다(버튼 사이에는 보내는 것이 없다)", "code" not in out, str(out))
-relay.PHONE_IDLE_S = saved_idle
+settings.PHONE_IDLE_S = saved_idle
 
 print("22. 추임새에 답하지 않게: 지시문과 자동 음성 감지 조절점")
 got, fake = run([[[msg(said="hi", turn_complete=True)]]], expect=3, first=HANDSFREE)
@@ -603,17 +610,17 @@ check("기본값: 시작 민감도 LOW, 침묵 700ms, 앞 여유 300ms",
       aad.start_of_speech_sensitivity == relay.types.StartSensitivity.START_SENSITIVITY_LOW
       and aad.silence_duration_ms == 700 and aad.prefix_padding_ms == 300, str(aad))
 check("지시문에 추임새·혼잣말에는 침묵하라는 규칙이 있다", "backchannel" in fake.instructions[0])
-saved = (relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS)
-relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS = "HIGH", 550, 200
+saved = (settings.LIVE_START_SENSITIVITY, settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS)
+settings.LIVE_START_SENSITIVITY, settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS = "HIGH", 550, 200
 got, fake = run([[[msg(said="hi", turn_complete=True)]]], expect=3, first=HANDSFREE)
 aad = fake.configs[0].realtime_input_config.automatic_activity_detection
 check("환경 변수 값이 설정에 들어간다(HIGH, 550, 200)",
       aad.start_of_speech_sensitivity == relay.types.StartSensitivity.START_SENSITIVITY_HIGH
       and aad.silence_duration_ms == 550 and aad.prefix_padding_ms == 200, str(aad))
-relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS = saved
+settings.LIVE_START_SENSITIVITY, settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS = saved
 
 print("23. 사진 정책 on_speech: 인사 턴이 끝난 뒤 1장, 말이 시작될 때 최신 1장")
-relay.FRAME_POLICY = "on_speech"
+settings.FRAME_POLICY = "on_speech"
 A, B, C = (b"\xff\xd8A", b"\xff\xd8B", b"\xff\xd8C")
 got, fake = run([[
     Delay(0.5, [msg(heard="Who painted"), msg(heard=" this?"),
@@ -628,13 +635,13 @@ check("인사 턴에는 사진을 넣지 않고, 말이 시작될 때 최신 1�
 check("이 정책에서도 report_current_artwork가 동작한다",
       fake.session.tool_responses and fake.session.tool_responses[0].response.get("artwork_id") == ARTWORK
       and "artwork" in types_of(got), str(types_of(got)))
-relay.FRAME_POLICY = "every"
+settings.FRAME_POLICY = "every"
 
 print("24. 답변 받아쓰기의 말 아닌 표시는 폰에 보내지 않는다")
 got, fake = run([[[msg(said="<no speech>"), msg(said="{pause}"), msg(said="\u200b"), msg(turn_complete=True)]]],
                 expect=2, first=HANDSFREE)
 check("표시만 있는 조각은 said로 보내지 않는다", types_of(got) == ["ready", "turn_complete"], str(types_of(got)))
-check("정상 문장은 그대로 둔다", relay.clean_said("Look at the shoes.") == "Look at the shoes.")
+check("정상 문장은 그대로 둔다", clean_said("Look at the shoes.") == "Look at the shoes.")
 
 print("25. 함수 없이 말한 비교를 받아쓰기에서 찾는다")
 ART_CALL = msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])
@@ -648,7 +655,7 @@ check("함수 없이 제목이 나오면 comparison(source transcript)을 보낸
       [(c["comparison_id"], c["artwork_id"], c["source"]) for c in comps]
       == [("C_KHD_BRUEGEL", ARTWORK, "transcript")], str(comps))
 check("받아쓰기로 찾은 비교에도 보여 줄 값이 들어간다(함수 경로와 같게)",
-      comps[0].get("foreign_title") == relay.verified_comparisons["C_KHD_BRUEGEL"]["foreign_title"],
+      comps[0].get("foreign_title") == verified_comparisons["C_KHD_BRUEGEL"]["foreign_title"],
       str(comps[0]))
 check("record_turn에 그 비교가 누적된다", visit.used_comparison_ids == ["C_KHD_BRUEGEL"], str(visit.used_comparison_ids))
 
@@ -688,8 +695,8 @@ got, fake = run([[
 ]], expect=4, first=HANDSFREE, linger=0.3)
 check("다른 작품의 짧은 제목(Red Fuji)도 무시한다", "comparison" not in types_of(got), str(types_of(got)))
 check("짧은 제목은 작가 이름이 있어야 인정한다(INWANG에서)",
-      relay.comparison_in_transcript("like Red Fuji", "JS_INWANG") == ""
-      and relay.comparison_in_transcript("Hokusai painted Red Fuji", "JS_INWANG") == "C_INWANG_HOKUSAI")
+      comparison_in_transcript("like Red Fuji", "JS_INWANG", verified_comparisons) == ""
+      and comparison_in_transcript("Hokusai painted Red Fuji", "JS_INWANG", verified_comparisons) == "C_INWANG_HOKUSAI")
 
 print("26. 인사 턴: 모델 속 글이 자막에 섞여 와도 폰에 보내지 않고 로그에 남긴다")
 # 11/18 멘토 전달본에서 본 증상 그대로. 인사를 하다 말고 함수 호출을 글자로 흘린 뒤 다시 인사했다.
@@ -761,7 +768,7 @@ check("인사 중에 온 사진은 들고 있다가 인사가 끝난 뒤 넘긴�
 print("28. .env의 오타와 빈 값에 서버가 죽지 않고 기본값으로 켜진다")
 # 환경 변수는 server.live를 불러오는 순간 읽는다. 그래서 이 프로세스가 아니라 새 프로세스에서
 # 불러 본다. 불러오다 예외가 나면 returncode가 0이 아니고, 그것이 uvicorn이 통째로 죽는 경우다.
-ENV_PROBE = ("import json, server.live as l; print(json.dumps({"
+ENV_PROBE = ("import json, server.live; from server import live_config as l; print(json.dumps({"
              "'model': l.LIVE_MODEL, 'voice': l.LIVE_VOICE, 'policy': l.FRAME_POLICY,"
              "'start': l.LIVE_START_SENSITIVITY, 'silence': l.LIVE_SILENCE_MS,"
              "'prefix': l.LIVE_PREFIX_MS, 'idle': l.PHONE_IDLE_S}))")
@@ -801,17 +808,17 @@ check("제대로 쓴 값은 그대로 들어간다",
       got == {"model": "gemini-3.8-live-preview", "voice": "Puck", "policy": "on_speech",
               "start": "HIGH", "silence": 550, "prefix": 200, "idle": 45.5}, str(got))
 
-saved_config = (relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY,
-                relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS,
-                relay.PHONE_IDLE_S)
-(relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY, relay.LIVE_START_SENSITIVITY,
- relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS, relay.PHONE_IDLE_S) = (
+saved_config = (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY,
+                settings.LIVE_START_SENSITIVITY, settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS,
+                settings.PHONE_IDLE_S)
+(settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY, settings.LIVE_START_SENSITIVITY,
+ settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS, settings.PHONE_IDLE_S) = (
     "gemini-3.8-live", "Kore", "every", "LOW", 700, 300, 30.0)
 check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
-      relay.env_summary_line() == "[live] model=gemini-3.8-live voice=Kore frame_policy=every "
-      "start=LOW silence=700ms prefix=300ms idle=30s", relay.env_summary_line())
-(relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY, relay.LIVE_START_SENSITIVITY,
- relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS, relay.PHONE_IDLE_S) = saved_config
+      settings.env_summary_line() == "[live] model=gemini-3.8-live voice=Kore frame_policy=every "
+      "start=LOW silence=700ms prefix=300ms idle=30s", settings.env_summary_line())
+(settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY, settings.LIVE_START_SENSITIVITY,
+ settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS, settings.PHONE_IDLE_S) = saved_config
 
 # ── 29. 관람 기록 (11/18 저녁) ────────────────────────────────────────────
 # ── 30. 비교 후보 글의 순서와 ID 목록의 순서가 같아야 한다 ──────────────────
@@ -823,10 +830,10 @@ from server.live_context import comparison_block as _block  # noqa: E402
 for _profile in ({"country": "japan"}, {"region": "japan"}, {"country": "france"},
                  {"region": "france"}, {}):
     _text = _block(relay.comparisons, ARTWORK, _profile, ())
-    _ids = relay.ranked_comparison_ids(ARTWORK, _profile, ())
+    _ids = ranked_comparison_ids(ARTWORK, _profile, (), verified_comparisons)
     # BE1의 글은 "1. <제목> by <작가>" 꼴로 번호를 붙여 늘어놓는다. 그 순서가 모델이 보는 순서다.
     _titles = [m.group(1).strip() for m in _re.finditer(r"^\s*\d+\.\s*(.+?) by ", _text, _re.M)]
-    _by_id = [relay.verified_comparisons[i]["foreign_title"] for i in _ids]
+    _by_id = [verified_comparisons[i]["foreign_title"] for i in _ids]
     # 모델은 글에서 "option 1"을 읽고 같은 자리의 ID를 report_comparison에 넣는다. 둘이 어긋나면
     # 말한 비교와 기록된 비교가 달라진다(11/18에 region만 보낸 프로필에서 실제로 어긋났다).
     check(f"{_profile or '프로필 없음'}: 글 순서와 ID 순서가 같다",
@@ -931,6 +938,43 @@ check("벽시계 시각은 visit_start의 10분 버킷 하나뿐이다",
       and all(len(r["start_bucket"]) == 16 and r["start_bucket"].endswith("0")
               for r in rows if "start_bucket" in r), str(rows[0].get("start_bucket")))
 check("모든 줄이 설계에 있는 사건이다", set(kinds) <= set(visit_log.ALLOWED), str(set(kinds)))
+
+print("31. 주입한 비교 목록이 함수 선언·응답·화면·관람 기억에 함께 반영된다")
+original_comparisons = relay.comparisons
+injected = {**verified_comparisons["C_KHD_BRUEGEL"], "comparison_id": "TEST_INJECTED"}
+unverified = {**injected, "comparison_id": "TEST_UNVERIFIED", "verification_status": "draft"}
+relay.comparisons = [injected, unverified]
+try:
+    visit = sessions.create_session()
+    got, fake = run([[[
+        ART_CALL,
+        msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})]),
+        msg(calls=[("report_comparison", {"comparison_id": "TEST_INJECTED"})]),
+        msg(said="Let us compare these paintings.", turn_complete=True),
+    ]]], expect=5, first={**HANDSFREE, "session_id": visit.session_id})
+    declarations = fake.configs[0].tools[0].function_declarations
+    comparison_tool = next(d for d in declarations if d.name == "report_comparison")
+    check("함수 선언에는 주입한 검증 비교 ID만 들어간다",
+          comparison_tool.parameters.properties["comparison_id"].enum == ["TEST_INJECTED"])
+    responses = [r.response for r in fake.session.tool_responses]
+    check("작품 함수 결과도 같은 비교 ID를 돌려준다",
+          responses[0]["comparison_ids"] == ["TEST_INJECTED"])
+    check("기존 전역 목록의 ID는 주입한 목록 밖이므로 거부한다", responses[1]["ok"] is False)
+    shown = next(g for g in got if isinstance(g, dict) and g.get("type") == "comparison")
+    check("화면 정보와 관람 기억도 주입한 비교를 사용한다",
+          shown["comparison_id"] == "TEST_INJECTED"
+          and shown["foreign_title"] == injected["foreign_title"]
+          and visit.used_comparison_ids == ["TEST_INJECTED"])
+
+    got, fake = run([[[ART_CALL, msg(
+        said=f"{injected['foreign_artist']}: {injected['foreign_title']}", turn_complete=True),
+    ]]], expect=5, first=HANDSFREE)
+    check("받아쓰기에서 찾는 비교도 주입한 목록을 따른다",
+          any(isinstance(g, dict) and g.get("type") == "comparison"
+              and g.get("comparison_id") == "TEST_INJECTED"
+              and g.get("source") == "transcript" for g in got))
+finally:
+    relay.comparisons = original_comparisons
 
 
 print()
