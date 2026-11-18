@@ -45,12 +45,14 @@ ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip('"')
 
-LABELS = ["fact", "meaning", "context", "technique", "comparison", "navigation", "request", "other", "unknown"]
+LABELS = ["fact", "artist", "meaning", "context", "technique", "comparison", "navigation", "request",
+          "other", "unknown"]
 
 # 라벨의 뜻을 한 줄씩 적는다. 사람과 모델이 같은 기준을 보게 하려고 정의를 한곳에 둔다.
-LABEL_GUIDE = """fact: asks for a verifiable attribute of the work (artist, date, size, designation, where it is kept).
+LABEL_GUIDE = """fact: asks for a verifiable attribute of the WORK itself (date, size, designation, material, where it is kept).
+artist: asks about the PERSON who made it — who they were, their life, career, reputation, or other works.
 meaning: asks what something in the picture means or symbolises, or what is happening in the scene.
-context: asks why or for whom the work was made, its historical background, use, or the artist's situation.
+context: asks why or for whom the work was made, its historical background, or its use. Not about the artist as a person — that is "artist".
 technique: asks how it was made: brushwork, pigments, ink handling, composition method, state of preservation.
 comparison: asks to compare this work with another work, artist, period, or tradition.
 navigation: asks about museum logistics or rules: where something is, opening hours, photography, how to use the app.
