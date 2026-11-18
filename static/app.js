@@ -47,7 +47,7 @@ let currentArtwork = "";
 let currentComparison = "";
 let returnScreen = "experience-screen";
 const viewedArtworks = new Map(); // artwork_id => {title,artist,comparisons:Set}. Session memory only.
-const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 768;
+const MIN_WAV_BYTES = 8000, FRAME_MAX_WIDTH = 1100;
 
 // ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
 // 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.
@@ -409,7 +409,7 @@ function captureFrame(){
   canvas.width=Math.round(video.videoWidth*scale);
   canvas.height=Math.round(video.videoHeight*scale);
   canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
-  return new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",.75));
+  return new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",.75)); 
 }
 $("end-visit").addEventListener("click",async()=>{
   if(busy)return;
