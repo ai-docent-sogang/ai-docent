@@ -125,6 +125,12 @@ uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key
 | `LIVE_PREFIX_MS` | `300` | 말로 인정하기 전에 필요한 말소리 길이 |
 | `LIVE_PHONE_IDLE_S` | `30` | 폰에서 이 시간 동안 아무것도 안 오면 연결을 닫음(다시 붙으면 대화 이어짐) |
 
+틀린 값을 넣어도 서버는 켜집니다. `[live] LIVE_PHONE_IDLE_S 값이 숫자가 아니라 ...` 처럼 경고 한 줄을 찍고 그 변수만 기본값으로 갑니다. 켤 때 지금 적용된 값을 `Application startup complete.` 바로 앞에 한 줄로 보여 줍니다.
+
+```
+[live] model=gemini-3.8-live voice=Kore frame_policy=every start=LOW silence=700ms prefix=300ms idle=30s
+```
+
 ## 시험
 
 ```bash

@@ -88,10 +88,12 @@ verified_comparisons = {c["comparison_id"]: c for c in comparisons
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
-# 음성 모델은 요청-응답 모델과 다르다(.env의 GEMINI_MODEL은 /api/turn·/api/ask가 쓴다).
-LIVE_MODEL = os.environ.get("LIVE_MODEL", "gemini-3.8-live")
-# 도슨트 목소리. 팀 규칙(11/13): 청취로 정하지 못하면 Kore. 두 모드가 같은 목소리를 쓴다.
-LIVE_VOICE = os.environ.get("LIVE_VOICE", "").strip() or "Kore"
+# 아래 네 도우미로만 환경 변수를 읽는다. 값이 비었거나 이상해도 예외를 올리지 않고 경고 한 줄을
+# 찍은 뒤 기본값을 쓴다. 불러오는 중에 예외가 나면 uvicorn이 통째로 죽고, 오류가 server/live.py를
+# 가리켜서 서버를 처음 켜는 사람은 원인이 .env의 오타라는 것을 알 수 없다.
+def _env_text(name, default):
+    """`.env`에 이름만 쓰고 값을 비워 둔 줄(`LIVE_MODEL=`)도 기본값으로 떨어뜨린다."""
+    return os.environ.get(name, "").strip() or default
 
 
 def _env_int(name, default):
@@ -102,15 +104,35 @@ def _env_int(name, default):
         return default
 
 
+def _env_float(name, default):
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        print(f"[live] {name} 값이 숫자가 아니라 기본값 {default}을 쓴다")
+        return default
+
+
+def _env_choice(name, default, allowed):
+    """대소문자는 가리지 않는다. 돌려주는 값은 allowed에 적힌 철자 그대로다."""
+    value = _env_text(name, default)
+    for ok in allowed:
+        if value.lower() == ok.lower():
+            return ok
+    print(f"[live] {name}={value}는 {'/'.join(allowed)} 가운데 없다. 기본값 {default}로 간다")
+    return default
+
+
+# 음성 모델은 요청-응답 모델과 다르다(.env의 GEMINI_MODEL은 /api/turn·/api/ask가 쓴다).
+LIVE_MODEL = _env_text("LIVE_MODEL", "gemini-3.8-live")
+# 도슨트 목소리. 팀 규칙(11/13): 청취로 정하지 못하면 Kore. 두 모드가 같은 목소리를 쓴다.
+LIVE_VOICE = _env_text("LIVE_VOICE", "Kore")
+
 # handsfree 자동 음성 감지 조절점(11/18 실기기에서 "음", "네" 같은 추임새에도 답해서 더함).
 #   LIVE_START_SENSITIVITY: LOW면 말의 시작을 덜 자주 잡는다(짧은 추임새를 덜 잡는다). 기본 LOW.
 #   LIVE_SILENCE_MS: 이만큼 조용하면 말이 끝났다고 본다. 기본 700(공식 문서 권장 500~800).
 #   LIVE_PREFIX_MS: 말로 인정하기 전에 필요한 말소리 길이. 기본 300.
 # 필드 이름은 google-genai 2.34.0 types.py의 AutomaticActivityDetection·StartSensitivity로 확인.
-LIVE_START_SENSITIVITY = (os.environ.get("LIVE_START_SENSITIVITY", "").strip().upper() or "LOW")
-if LIVE_START_SENSITIVITY not in ("LOW", "HIGH"):
-    print(f"[live] LIVE_START_SENSITIVITY={LIVE_START_SENSITIVITY}는 LOW/HIGH가 아니라 LOW를 쓴다")
-    LIVE_START_SENSITIVITY = "LOW"
+LIVE_START_SENSITIVITY = _env_choice("LIVE_START_SENSITIVITY", "LOW", ("LOW", "HIGH"))
 LIVE_SILENCE_MS = _env_int("LIVE_SILENCE_MS", 700)
 LIVE_PREFIX_MS = _env_int("LIVE_PREFIX_MS", 300)
 
@@ -118,15 +140,37 @@ LIVE_PREFIX_MS = _env_int("LIVE_PREFIX_MS", 300)
 #   every: 폰이 보낸 사진을 받는 대로 넘긴다(기본).
 #   on_speech: 서버가 최신 1장만 들고 있다가, 관람객 말이 시작된 신호(그 턴의 첫 받아쓰기)와 글 질문 때
 #              1장만 넘긴다. Gemini 연결 직후 처음 오는 1장도 넘긴다.
-FRAME_POLICY = os.environ.get("LIVE_FRAME_POLICY", "").strip().lower() or "every"
-if FRAME_POLICY not in ("every", "on_speech"):
-    print(f"[live] LIVE_FRAME_POLICY={FRAME_POLICY}는 every/on_speech가 아니라 every를 쓴다")
-    FRAME_POLICY = "every"
+FRAME_POLICY = _env_choice("LIVE_FRAME_POLICY", "every", ("every", "on_speech"))
 
 # handsfree에서 폰이 이 시간(초) 동안 아무것도 보내지 않으면(소리·사진·글·ping) 죽은 연결로 보고 닫는다.
 # 11/18 실기기: 잠금을 풀자 Safari가 페이지를 새로 불렀는데 앞 WS의 끝을 서버가 알지 못해(cloudflared 경유)
 # Gemini 세션이 계속 살아 있었다. 폰은 화면이 보일 때 100ms마다 소리를, 5초마다 ping을 보낸다.
-PHONE_IDLE_S = float(os.environ.get("LIVE_PHONE_IDLE_S", "").strip() or 30)
+PHONE_IDLE_S = _env_float("LIVE_PHONE_IDLE_S", 30)
+
+
+def env_summary_line():
+    """지금 적용된 Live 설정 한 줄. API 키는 넣지 않는다."""
+    return (f"[live] model={LIVE_MODEL} voice={LIVE_VOICE} frame_policy={FRAME_POLICY} "
+            f"start={LIVE_START_SENSITIVITY} silence={LIVE_SILENCE_MS}ms "
+            f"prefix={LIVE_PREFIX_MS}ms idle={PHONE_IDLE_S:g}s")
+
+
+_config_line_printed = False
+
+
+def print_live_config():
+    """불러오는 시점에 찍으면 uvicorn 배너에 묻히므로 시작 이벤트에서 찍는다.
+
+    include_router가 이 핸들러를 app 쪽으로 복사하면서 라우터에도 남겨 두어 시작 때 두 번 불린다
+    (fastapi 0.162.0 · starlette 1.10.0에서 확인). 줄은 한 번만 찍는다.
+    """
+    global _config_line_printed
+    if not _config_line_printed:
+        _config_line_printed = True
+        print(env_summary_line(), flush=True)
+
+
+router.add_event_handler("startup", print_live_config)
 
 # 말의 앞뒤에 넣는 무음(push 모드). 경계에 말이 바로 붙으면 첫 단어·끝 단어가 잘린다. 11/11 측정에서
 # 취약 문장 5개를 조건별 5회(각 25건) 시험해 완전 일치가 10/25 → 25/25였다.

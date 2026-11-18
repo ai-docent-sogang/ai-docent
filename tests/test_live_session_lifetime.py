@@ -20,6 +20,8 @@ import base64
 import contextlib
 import io
 import json
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -733,6 +735,61 @@ got, fake = run([[
 check("인사 신호를 realtime 입력보다 먼저 보낸다", fake.session.order[:1] == ["client"], str(fake.session.order))
 videos = [x["video"].data for x in fake.session.sent if "video" in x]
 check("인사 중에 온 사진은 들고 있다가 인사가 끝난 뒤 넘긴다", videos == [HELLO_JPEG], str(videos))
+
+print("28. .env의 오타와 빈 값에 서버가 죽지 않고 기본값으로 켜진다")
+# 환경 변수는 server.live를 불러오는 순간 읽는다. 그래서 이 프로세스가 아니라 새 프로세스에서
+# 불러 본다. 불러오다 예외가 나면 returncode가 0이 아니고, 그것이 uvicorn이 통째로 죽는 경우다.
+ENV_PROBE = ("import json, server.live as l; print(json.dumps({"
+             "'model': l.LIVE_MODEL, 'voice': l.LIVE_VOICE, 'policy': l.FRAME_POLICY,"
+             "'start': l.LIVE_START_SENSITIVITY, 'silence': l.LIVE_SILENCE_MS,"
+             "'prefix': l.LIVE_PREFIX_MS, 'idle': l.PHONE_IDLE_S}))")
+DEFAULTS = {"model": "gemini-3.8-live", "voice": "Kore", "policy": "every",
+            "start": "LOW", "silence": 700, "prefix": 300, "idle": 30.0}
+
+
+def one_line(text):
+    return text.replace("\n", " | ")[-160:]
+
+
+def load_live_with(**env):
+    """환경 변수를 바꾼 새 프로세스에서 server.live를 불러온다. 돌려주는 값: (출력, 설정 또는 None)."""
+    done = subprocess.run([sys.executable, "-c", ENV_PROBE], capture_output=True, text=True,
+                          env={**os.environ, "PYTHONPATH": ".", **env})
+    out = done.stdout + done.stderr
+    return out, (json.loads(done.stdout.splitlines()[-1]) if done.returncode == 0 else None)
+
+
+out, got = load_live_with(LIVE_PHONE_IDLE_S="30s", LIVE_SILENCE_MS="칠백", LIVE_PREFIX_MS="0.3s",
+                          LIVE_START_SENSITIVITY="MEDIUM", LIVE_FRAME_POLICY="sometimes")
+check("오타가 있어도 불러오다 죽지 않고 전부 기본값이 된다", got == DEFAULTS, one_line(out))
+check("고친 값마다 경고 한 줄을 찍는다",
+      all(f"[live] {name}" in out for name in
+          ("LIVE_PHONE_IDLE_S", "LIVE_SILENCE_MS", "LIVE_PREFIX_MS",
+           "LIVE_START_SENSITIVITY", "LIVE_FRAME_POLICY")), one_line(out))
+
+out, got = load_live_with(LIVE_MODEL="", LIVE_VOICE="", LIVE_FRAME_POLICY="",
+                          LIVE_START_SENSITIVITY="", LIVE_SILENCE_MS="", LIVE_PREFIX_MS="",
+                          LIVE_PHONE_IDLE_S="")
+check("이름만 쓰고 비워 둔 줄도 기본값이 된다(빈 모델 이름으로 켜지지 않는다)", got == DEFAULTS, one_line(out))
+
+out, got = load_live_with(LIVE_MODEL="gemini-3.8-live-preview", LIVE_VOICE="Puck",
+                          LIVE_FRAME_POLICY="on_speech", LIVE_START_SENSITIVITY="high",
+                          LIVE_SILENCE_MS="550", LIVE_PREFIX_MS="200", LIVE_PHONE_IDLE_S="45.5")
+check("제대로 쓴 값은 그대로 들어간다",
+      got == {"model": "gemini-3.8-live-preview", "voice": "Puck", "policy": "on_speech",
+              "start": "HIGH", "silence": 550, "prefix": 200, "idle": 45.5}, str(got))
+
+saved_config = (relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY,
+                relay.LIVE_START_SENSITIVITY, relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS,
+                relay.PHONE_IDLE_S)
+(relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY, relay.LIVE_START_SENSITIVITY,
+ relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS, relay.PHONE_IDLE_S) = (
+    "gemini-3.8-live", "Kore", "every", "LOW", 700, 300, 30.0)
+check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
+      relay.env_summary_line() == "[live] model=gemini-3.8-live voice=Kore frame_policy=every "
+      "start=LOW silence=700ms prefix=300ms idle=30s", relay.env_summary_line())
+(relay.LIVE_MODEL, relay.LIVE_VOICE, relay.FRAME_POLICY, relay.LIVE_START_SENSITIVITY,
+ relay.LIVE_SILENCE_MS, relay.LIVE_PREFIX_MS, relay.PHONE_IDLE_S) = saved_config
 
 print()
 if failures:
