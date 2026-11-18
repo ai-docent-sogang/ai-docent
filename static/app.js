@@ -33,6 +33,9 @@ const comparisonCatalog = {
   C_INWANG_HOKUSAI: { artwork: "JS_INWANG", title: "South Wind, Clear Sky (Red Fuji)", artist: "Katsushika Hokusai", collection: "The Metropolitan Museum of Art", url: "https://www.metmuseum.org/art/collection/search/36490" },
   C_KHD_BRUEGEL: { artwork: "KHD_SSIREUM", title: "Peasant Wedding", artist: "Pieter Bruegel the Elder", collection: "Kunsthistorisches Museum Vienna", url: "https://www.khm.at/en/objectdb/detail/330/" },
   C_SEODANG_BRUEGEL: { artwork: "KHD_SEODANG", title: "Children's Games", artist: "Pieter Bruegel the Elder", collection: "Kunsthistorisches Museum Vienna", url: "https://www.khm.at/en/objectdb/detail/321/" },
+  C_KHD_HOKUSAI_MANGA: { artwork: "KHD_SSIREUM", title: "Hokusai Sketchbooks (Hokusai manga), first volume", artist: "Katsushika Hokusai", collection: "The Metropolitan Museum of Art", url: "https://www.metmuseum.org/art/collection/search/57679" },
+  C_KSH_DURER: { artwork: "KSH_SELF", title: "Self-Portrait with Fur-Trimmed Robe", artist: "Albrecht Dürer", collection: "Alte Pinakothek, Munich", url: "https://www.sammlung.pinakothek.de/en/artwork/Qlx2QpQ4Xq" },
+  C_KSH_REMBRANDT: { artwork: "KSH_SELF", title: "Self Portrait at the Age of 63", artist: "Rembrandt", collection: "The National Gallery, London", url: "https://www.nationalgallery.org.uk/paintings/rembrandt-self-portrait-at-the-age-of-63" },
 };
 let sessionId = null;
 let stream = null;
