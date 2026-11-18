@@ -123,6 +123,21 @@ with tempfile.TemporaryDirectory() as tmp:
     refused("긴 글자는 칸 이름이 맞아도 거부한다", "question", artwork_id="x" * 65)
     refused("모르는 사건은 거부한다", "visitor_face")
     refused("quality에 모르는 값은 거부한다", "quality", issue="배가 고프다")
+    for issue in visit_log.QUALITY_ISSUES:
+        try:
+            log.event("quality", issue=issue)
+        except visit_log.FieldNotAllowed as exc:
+            check(f"quality issue {issue!r}를 받는다", False, str(exc)[:80])
+        else:
+            check(f"quality issue {issue!r}를 받는다", True)
+    # live.py가 실제로 보내는 값들. 한 글자 오타로 기록이 터진 적이 있다(11/18).
+    for issue in ("interrupted", "reconnect", "resumed", "phone_idle_close"):
+        try:
+            log.event("quality", issue=issue)
+        except visit_log.FieldNotAllowed as exc:
+            check(f"live.py가 보내는 {issue!r}가 거부되지 않는다", False, str(exc)[:80])
+        else:
+            check(f"live.py가 보내는 {issue!r}가 거부되지 않는다", True)
     text = "\n".join(p.read_text(encoding="utf-8") for p in Path(tmp).glob("visits-*.jsonl"))
     check("거부된 것은 파일에 한 글자도 들어가지 않았다",
           "Kim Hong-do" not in text and "Who painted" not in text and "France" not in text)
