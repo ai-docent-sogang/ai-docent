@@ -837,7 +837,7 @@ async def live(ws: WebSocket):
                     state["speech_end_at"] = time.monotonic()
             if getattr(m, "usage_metadata", None) is not None:
                 # 턴마다 여러 번 올 수 있어 마지막 것만 들고 있다가 턴이 끝날 때 한 번 적는다.
-                # 이 숫자가 턴마다의 양인지 세션 누적인지는 아직 확인하지 않았다(실측 필요).
+                # 이 숫자는 세션 누적이다(11/18 실측: total 2053→2522→3849→4166). 아래에서 차이를 적는다.
                 state["usage"] = m.usage_metadata
             c = m.server_content
             if c is None:

@@ -44,6 +44,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODES = ("off", "team", "visitor")
 SOURCE_KINDS = ("mock", "team_rehearsal", "team_shoot", "visitor")
+# 같은 것을 가리키는 다른 철자. 측정 계획과 결정 기록은 team_filming으로 적고 코드는 team_shoot이다.
+# 12/1 촬영은 한 번뿐이고 자료를 다시 받을 수 없다. 철자가 틀리면 경고만 찍히고 team_rehearsal로
+# 적혀서 리허설과 섞인다("합산하지 않는다" 11/16 결정이 깨진다). 그래서 둘 다 받는다.
+SOURCE_KIND_ALIASES = {"team_filming": "team_shoot", "shoot": "team_shoot",
+                       "rehearsal": "team_rehearsal"}
 START_BUCKET_MINUTES = 10   # 근거 조사: 분 단위 시각은 재식별 단서가 된다
 DURATION_BUCKET_S = 10
 MAX_TEXT = 64               # 이보다 긴 글자는 받아쓰기가 섞인 것으로 본다
@@ -105,6 +110,7 @@ def _source_kind(mode: str) -> str:
     if mode == "visitor":
         return "visitor"
     value = _env("LIVE_VISIT_SOURCE_KIND")
+    value = SOURCE_KIND_ALIASES.get(value, value)
     if value in SOURCE_KINDS:
         return value
     if value:

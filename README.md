@@ -142,7 +142,7 @@ node tests/test_live_player.mjs
 PYTHONPATH=. uv run python tests/test_live_session_lifetime.py
 ```
 
-서버나 Gemini 없이 돌아갑니다. 콘텐츠 CSV 검사 도구(`tools/check_content.py`)는 아직 구현되지 않았습니다. CSV를 고친 뒤에는 서버를 다시 켜서 직접 확인합니다.
+서버나 Gemini 없이 돌아갑니다. 콘텐츠 CSV를 고친 뒤에는 검사 도구를 돌립니다: `PYTHONPATH=. uv run python -m tools.check_content` (BE2, 11/18 PR #23). 중복 ID, 없는 `artwork_id`, 구분자, `verification_status`, `checked_at` 형식을 봅니다. 11/18 기준 0 errors, 18 warnings입니다.
 
 ## 시연 순서
 
@@ -173,7 +173,7 @@ PYTHONPATH=. uv run python tests/test_live_session_lifetime.py
 | `LA_DOGS` | 이암, 어미개와 강아지 (본관 255) | 없음 |
 | `SSD_CHOCHUNG` | 전 신사임당, 초충도 (신수 3550) | 없음 |
 
-작품 11점과 비교쌍 7건은 모두 FE3 검토를 거쳐 `verification_status=verified`입니다(`checked_at` 2026-11-09). 작품 사실(`key_facts`)은 e뮤지엄 작품 페이지(`official_url`)에서, 비교쌍의 유사점·차이점은 양쪽 작품의 공식 소장품 기록에서 옮겼습니다. 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고 서버는 이 열을 읽지 않습니다.
+작품 11점과 비교쌍 20건은 모두 FE3 검토를 거쳐 `verification_status=verified`입니다(`checked_at` 2026-11-09). 작품 사실(`key_facts`)은 e뮤지엄 작품 페이지(`official_url`)에서, 비교쌍의 유사점·차이점은 양쪽 작품의 공식 소장품 기록에서 옮겼습니다. 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고 서버는 이 열을 읽지 않습니다.
 
 - **서화실 실제 전시 여부(`on_view_status`)는 11점 모두 아직 "확인 필요"입니다.** 시연 전에 현장과 박물관 공식 사이트에서 확인하고, 전시되지 않은 작품은 뺍니다.
 - 서버는 아직 `verification_status`로 거르지 않습니다(`server/content.py`). 지금은 모두 verified지만, 검증 안 된 행이 생기면 시연 전에 빼야 합니다.

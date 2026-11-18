@@ -196,6 +196,15 @@ with tempfile.TemporaryDirectory() as tmp:
     log.event("artwork_identified", artwork_id="KHD_SSIREUM", via="function")
     check("끝난 관람에 또 끝내거나 사건을 넣어도 늘지 않는다", len(lines(tmp)) == before, str(before))
 
+print("\n7. 촬영 자료 이름의 다른 철자도 받는다 (12/1 촬영은 한 번뿐이다)")
+for spelling, expected in (("team_filming", "team_shoot"), ("team_shoot", "team_shoot"),
+                           ("rehearsal", "team_rehearsal"), ("틀린값", "team_rehearsal")):
+    with tempfile.TemporaryDirectory() as tmp:
+        env(LIVE_VISIT_LOG="team", LIVE_VISIT_SOURCE_KIND=spelling, LIVE_VISIT_DIR=tmp)
+        visit_log.start(mode="handsfree", model="m", voice="Kore").end()
+        got = lines(tmp)[0]["source_kind"]
+        check(f"{spelling!r} → {expected!r}", got == expected, got)
+
 print("\n7. visitor는 source_kind를 visitor로 못 박는다")
 with tempfile.TemporaryDirectory() as tmp:
     env(LIVE_VISIT_LOG="visitor", LIVE_VISIT_SOURCE_KIND="mock", LIVE_VISIT_DIR=tmp)
