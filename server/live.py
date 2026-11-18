@@ -475,6 +475,21 @@ def comparison_in_transcript(said, artwork_id):
     return min(found)[1] if found else ""
 
 
+def comparison_display(comparison_id):
+    """비교 하나를 화면이 그리는 데 필요한 값만. 없는 ID면 빈 dict.
+
+    화면(static/app.js)이 같은 값을 손으로 베껴 두고 있었는데, 예원님이 `data/comparisons.csv`를
+    늘릴 때마다 어긋났다(11/18에 7→20점이 되면서 14개가 요약에서 사라지고 ID 하나는 죽었다).
+    베낀 목록을 지우려고 서버가 보내 준다. angle·similarities·differences는 보내지 않는다 —
+    그것은 Gemini에게 주는 설명 재료이고 화면은 쓰지 않는다.
+    """
+    pair = verified_comparisons.get(comparison_id)
+    if pair is None:
+        return {}
+    return {"foreign_title": pair["foreign_title"], "foreign_artist": pair["foreign_artist"],
+            "foreign_collection": pair["foreign_collection"], "foreign_url": pair["foreign_url"]}
+
+
 def ranked_comparison_ids(artwork_id, profile, used_ids):
     """comparison_block이 적는 후보와 같은 순서의 comparison_id 목록.
 
@@ -638,7 +653,7 @@ async def live(ws: WebSocket):
                 state["comparison_id"] = cid
                 to_browser.put_nowait(("text", {
                     "type": "comparison", "comparison_id": cid, "artwork_id": state["artwork_id"],
-                    "source": "transcript"}))
+                    "source": "transcript", **comparison_display(cid)}))
                 vlog.event("comparison", artwork_id=state["artwork_id"], comparison_id=cid,
                            via="transcript")
         visit.record_turn(state["heard"].strip(), SimpleNamespace(
@@ -671,8 +686,11 @@ async def live(ws: WebSocket):
             vlog.event("artwork_identified", artwork_id=artwork_id, via="function")
             save_resume()
             used = list(visit.used_comparison_ids) + ([state["comparison_id"]] if state["comparison_id"] else [])
+            # 화면이 작품 목록을 베껴 두지 않게 보여 줄 값을 같이 보낸다(11/18). 베낀 목록은
+            # 예원님이 CSV를 늘릴 때마다 어긋났다 — 하루에 두 번 났다.
             to_browser.put_nowait(("text", {
-                "type": "artwork", "artwork_id": artwork_id, "artwork_title": found["title_en"]}))
+                "type": "artwork", "artwork_id": artwork_id, "artwork_title": found["title_en"],
+                "artist": found.get("artist", "")}))
             return {
                 "artwork_id": artwork_id,
                 "artwork": build_artwork_context(found),
@@ -693,7 +711,7 @@ async def live(ws: WebSocket):
             state["comparison_id"] = comparison_id
             to_browser.put_nowait(("text", {
                 "type": "comparison", "comparison_id": comparison_id, "artwork_id": pair["artwork_id"],
-                "source": "function"}))
+                "source": "function", **comparison_display(comparison_id)}))
             vlog.event("comparison", artwork_id=pair["artwork_id"], comparison_id=comparison_id,
                        via="function")
             return {"ok": True, "comparison_id": comparison_id,

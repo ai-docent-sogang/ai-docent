@@ -415,8 +415,18 @@ arts = [g for g in got if isinstance(g, dict) and g.get("type") == "artwork"]
 comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
 check("폰에 artwork를 보낸다", arts and arts[0]["artwork_id"] == ARTWORK and arts[0]["artwork_title"], str(arts))
 check("폰에 comparison은 받은 것 하나만 보낸다",
-      comps == [{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": ARTWORK,
-                 "source": "function"}], str(comps))
+      [(c["comparison_id"], c["artwork_id"], c["source"]) for c in comps]
+      == [("C_KHD_BRUEGEL", ARTWORK, "function")], str(comps))
+# 화면이 작품·비교 정보를 베껴 두지 않게 서버가 보여 줄 값을 같이 보낸다(11/18).
+# 베낀 목록은 예원님이 CSV를 늘릴 때마다 어긋났다. 빠지면 요약에서 비교가 조용히 사라진다.
+pair = relay.verified_comparisons["C_KHD_BRUEGEL"]
+check("artwork에 작가를 같이 보낸다(화면이 작품 목록을 베끼지 않게)",
+      arts[0].get("artist") == relay.artworks[ARTWORK]["artist"], str(arts[0]))
+check("comparison에 외국 작품의 제목·작가·소장처·링크를 같이 보낸다",
+      all(comps[0].get(k) == pair[k] for k in
+          ("foreign_title", "foreign_artist", "foreign_collection", "foreign_url")), str(comps[0]))
+check("비교 설명 재료(angle·유사점·차이점)는 폰에 보내지 않는다",
+      not any(k in comps[0] for k in ("angle", "similarities", "differences")), str(comps[0]))
 visit = sessions.get_session(got[0]["session_id"])
 check("record_turn에 작품과 comparison_id가 들어간다",
       visit.seen_artwork_ids == [ARTWORK] and visit.used_comparison_ids == ["C_KHD_BRUEGEL"],
@@ -635,8 +645,11 @@ got, fake = run([[
 comps = [g for g in got if isinstance(g, dict) and g.get("type") == "comparison"]
 visit = sessions.get_session(got[0]["session_id"])
 check("함수 없이 제목이 나오면 comparison(source transcript)을 보낸다",
-      comps == [{"type": "comparison", "comparison_id": "C_KHD_BRUEGEL", "artwork_id": ARTWORK,
-                 "source": "transcript"}], str(comps))
+      [(c["comparison_id"], c["artwork_id"], c["source"]) for c in comps]
+      == [("C_KHD_BRUEGEL", ARTWORK, "transcript")], str(comps))
+check("받아쓰기로 찾은 비교에도 보여 줄 값이 들어간다(함수 경로와 같게)",
+      comps[0].get("foreign_title") == relay.verified_comparisons["C_KHD_BRUEGEL"]["foreign_title"],
+      str(comps[0]))
 check("record_turn에 그 비교가 누적된다", visit.used_comparison_ids == ["C_KHD_BRUEGEL"], str(visit.used_comparison_ids))
 
 got, fake = run([[

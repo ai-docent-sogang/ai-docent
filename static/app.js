@@ -14,29 +14,8 @@ const regionLanguages = {
   "china": "Chinese",
   "japan": "Japanese",
 };
-const artworkCatalog = {
-  JS_INWANG: { title: "Inwang jesaekdo (Scene of Inwangsan Mountain After Rain)", artist: "Jeong Seon · 1751" },
-  KHD_SSIREUM: { title: "Korean Traditional Wrestling", artist: "Kim Hong-do · Late 18th century" },
-  KHD_SEODANG: { title: "A Village School", artist: "Kim Hong-do · Late 18th century" },
-  KSH_SELF: { title: "Portrait of Kang Se-hwang", artist: "Kang Se-hwang · 1782" },
-  KJH_SEHAN: { title: "Sehando (Winter Scene)", artist: "Kim Jeong-hui · 1844" },
-  LIM_GANGSAN: { title: "Rivers and Mountains without End", artist: "Yi In-mun · Early 19th century" },
-  KHD_CHUSEONG: { title: "Chuseongbudo (Sounds of Autumn)", artist: "Kim Hong-do · 1805" },
-  SYB_BABY: { title: "Woman Carrying a Baby on Her Back", artist: "Shin Yun-bok · Late Joseon" },
-  CHAEKGADO_6: { title: "Chaekgado (Bookshelf Painting)", artist: "Unknown · Late 18th century" },
-  LA_DOGS: { title: "Painting of a Dog and Puppies", artist: "Yi Am · 16th century" },
-  SSD_CHOCHUNG: { title: "Plants and Insects", artist: "Attributed to Shin Saimdang · Joseon" },
-};
-// Verified comparison records from data/comparisons.csv; do not claim a comparison unless the API returns its id.
-const comparisonCatalog = {
-  C_INWANG_CEZANNE: { artwork: "JS_INWANG", title: "Mont Sainte-Victoire", artist: "Paul Cézanne", collection: "The Metropolitan Museum of Art", url: "https://www.metmuseum.org/art/collection/search/435878" },
-  C_INWANG_HOKUSAI: { artwork: "JS_INWANG", title: "South Wind, Clear Sky (Red Fuji)", artist: "Katsushika Hokusai", collection: "The Metropolitan Museum of Art", url: "https://www.metmuseum.org/art/collection/search/36490" },
-  C_KHD_BRUEGEL: { artwork: "KHD_SSIREUM", title: "Peasant Wedding", artist: "Pieter Bruegel the Elder", collection: "Kunsthistorisches Museum Vienna", url: "https://www.khm.at/en/objectdb/detail/330/" },
-  C_SEODANG_BRUEGEL: { artwork: "KHD_SEODANG", title: "Children's Games", artist: "Pieter Bruegel the Elder", collection: "Kunsthistorisches Museum Vienna", url: "https://www.khm.at/en/objectdb/detail/321/" },
-  C_KHD_HOKUSAI_MANGA: { artwork: "KHD_SSIREUM", title: "Hokusai Sketchbooks (Hokusai manga), first volume", artist: "Katsushika Hokusai", collection: "The Metropolitan Museum of Art", url: "https://www.metmuseum.org/art/collection/search/57679" },
-  C_KSH_DURER: { artwork: "KSH_SELF", title: "Self-Portrait with Fur-Trimmed Robe", artist: "Albrecht Dürer", collection: "Alte Pinakothek, Munich", url: "https://www.sammlung.pinakothek.de/en/artwork/Qlx2QpQ4Xq" },
-  C_KSH_REMBRANDT: { artwork: "KSH_SELF", title: "Self Portrait at the Age of 63", artist: "Rembrandt", collection: "The National Gallery, London", url: "https://www.nationalgallery.org.uk/paintings/rembrandt-self-portrait-at-the-age-of-63" },
-};
+// 작품·비교 정보는 서버가 보내 준다(11/18, FE1). 전에는 이 파일에 손으로 베껴 뒀는데
+// data/comparisons.csv가 20점으로 늘자 14개가 요약에서 사라지고 ID 하나는 죽었다.
 let sessionId = null;
 let stream = null;
 let recorder = null;
@@ -218,16 +197,20 @@ updateLanguageLabel();
 function recordArtwork(data) {
   const id = data.artwork_id;
   if (!id || id === "unknown") return;
-  const known = artworkCatalog[id] || {};
   if (!viewedArtworks.has(id)) viewedArtworks.set(id, {
-    title: data.artwork_title || known.title || id, artist: known.artist || "Joseon artwork", comparisons: new Set(),
+    title: data.artwork_title || id, artist: data.artist || "Joseon artwork", comparisons: new Map(),
   });
   const entry = viewedArtworks.get(id);
   if (data.artwork_title) entry.title = data.artwork_title;
-  if (data.comparison_id && comparisonCatalog[data.comparison_id]?.artwork === id)
-    entry.comparisons.add(data.comparison_id);
+  if (data.artist) entry.artist = data.artist;
+  // 비교는 서버가 보내 준 제목·작가·소장처를 그대로 쌓는다. 제목이 없으면 그릴 것이 없으니 세지 않는다.
+  if (data.comparison_id && data.foreign_title)
+    entry.comparisons.set(data.comparison_id, {
+      title: data.foreign_title, artist: data.foreign_artist || "",
+      collection: data.foreign_collection || "", url: data.foreign_url || "",
+    });
   currentArtwork = id;
-  currentComparison = data.comparison_id && comparisonCatalog[data.comparison_id]?.artwork === id ? data.comparison_id : "";
+  currentComparison = data.comparison_id && entry.comparisons.has(data.comparison_id) ? data.comparison_id : "";
   $("recognized-title").textContent = entry.title;
   $("artwork-shortcut").hidden = false;
 }
@@ -256,12 +239,11 @@ function renderSummary() {
       const label=document.createElement("div");label.className="summary-label";label.textContent="NO COMPARISON USED";
       card.append(line,label);
     } else {
-      for (const id of item.comparisons) {
-        const match=comparisonCatalog[id];if(!match)continue;
+      for (const match of item.comparisons.values()) {
         const line=document.createElement("div");line.className="pair-divider";
         const label=document.createElement("div");label.className="summary-label";label.textContent="↳  PAIRED WITH";
         const foreign=document.createElement("h3");foreign.textContent=match.title;
-        const meta=document.createElement("p");meta.textContent=match.artist+" · "+match.collection;
+        const meta=document.createElement("p");meta.textContent=[match.artist,match.collection].filter(Boolean).join(" · ");
         card.append(line,label,foreign,meta);
       }
     }
@@ -274,11 +256,11 @@ function showDetails() {
   const art=viewedArtworks.get(currentArtwork);
   $("details-title").textContent=art.title;
   $("details-subtitle").textContent=art.artist;
-  const c=comparisonCatalog[currentComparison];
+  const c=art.comparisons.get(currentComparison);
   $("details-comparison").hidden=!c;
   if(c) {
     $("comparison-title").textContent=c.title;
-    $("comparison-subtitle").textContent=c.artist+" · "+c.collection;
+    $("comparison-subtitle").textContent=[c.artist,c.collection].filter(Boolean).join(" · ");
     $("comparison-link").href=c.url;
     $("comparison-link").hidden=!c.url;
   }

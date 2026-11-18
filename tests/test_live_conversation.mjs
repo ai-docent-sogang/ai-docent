@@ -214,11 +214,18 @@ async function openReady(t) {
 {
   const t = setup();
   const ws = await openReady(t);
-  ws.serverSend({ type: "artwork", artwork_id: "KHD_SSIREUM", artwork_title: "Ssireum" });
-  ws.serverSend({ type: "comparison", comparison_id: "C_KHD_BRUEGEL", artwork_id: "KHD_SSIREUM" });
+  // 서버가 보여 줄 값(artist·foreign_*)을 같이 보낸다. 그대로 넘어가야 요약에서 비교가 그려진다.
+  ws.serverSend({ type: "artwork", artwork_id: "KHD_SSIREUM", artwork_title: "Ssireum",
+                  artist: "Kim Hong-do" });
+  ws.serverSend({ type: "comparison", comparison_id: "C_KHD_BRUEGEL", artwork_id: "KHD_SSIREUM",
+                  foreign_title: "Peasant Wedding", foreign_artist: "Pieter Bruegel the Elder" });
   ws.serverSend({ type: "something_new" }); // 모르는 메시지는 무시
-  assert.deepEqual(t.events.artwork, [{ artwork_id: "KHD_SSIREUM", artwork_title: "Ssireum" }]);
-  assert.deepEqual(t.events.comparison, [{ artwork_id: "KHD_SSIREUM", comparison_id: "C_KHD_BRUEGEL" }]);
+  assert.deepEqual(t.events.artwork, [{ type: "artwork", artwork_id: "KHD_SSIREUM",
+                                        artwork_title: "Ssireum", artist: "Kim Hong-do" }]);
+  assert.deepEqual(t.events.comparison, [{ type: "comparison", artwork_id: "KHD_SSIREUM",
+                                           comparison_id: "C_KHD_BRUEGEL",
+                                           foreign_title: "Peasant Wedding",
+                                           foreign_artist: "Pieter Bruegel the Elder" }]);
   console.log("  ⑤ artwork·comparison을 recordArtwork 형식으로 전달, 모르는 메시지 무시");
 }
 

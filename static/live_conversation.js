@@ -472,11 +472,13 @@ export function createLiveConversation({ handlers = {}, log, video, ...deps } = 
             if (!serverReconnecting) emit(idleState());
             handlers.onTurnComplete?.();
             break;
+          // 칸 이름을 여기 적어 두지 않는다. 적어 두면 서버가 보내는 새 칸이 조용히 버려진다 —
+          // 11/18에 서버가 보내기 시작한 artist·foreign_* 가 그렇게 사라져서 요약의 비교가 비었다.
           case "artwork":
-            handlers.onArtwork?.({ artwork_id: data.artwork_id, artwork_title: data.artwork_title });
+            handlers.onArtwork?.(data);
             break;
           case "comparison":
-            handlers.onComparison?.({ artwork_id: data.artwork_id, comparison_id: data.comparison_id });
+            handlers.onComparison?.(data);
             break;
           case "reconnecting":
             serverReconnecting = true;
