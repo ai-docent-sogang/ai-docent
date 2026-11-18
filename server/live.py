@@ -238,8 +238,11 @@ def clean_said(text):
 #   "...do you usually enjoy? -=call:report_current_artwork{artwork_id:unknown…"(멘토 전달본 증상)
 # 가로줄·등호가 이어진 토막과 함수 이름은 도슨트가 입으로 낼 말이 아니다(지시문도 함수 이름을
 # 소리 내어 읽지 말라고 적어 둔다). 이것이 보이면 그 턴의 남은 받아쓰기는 폰에 보내지 않고
-# 관람 기억에도 넣지 않는다. 대신 걸러 낸 글을 서버 로그에 그대로 적는다.
+# 관람 기억에도 넣지 않는다. 서버 로그에는 왜 걸렀는지 아는 데 필요한 앞부분만 적는다.
 LEAK_MARK = re.compile(r"-=|=-|[-=]{3,}|report_current_artwork|report_comparison")
+# 로그에 찍는 앞부분의 길이. 걸러 낸 글은 늘 표시(LEAK_MARK)로 시작하므로 이 길이면 어떤
+# 표시였는지 다 보인다. 가장 긴 표시가 report_current_artwork(22자)다.
+LEAK_LOG_CHARS = 32
 # 조각이 끊겨 와도 놓치지 않게, 표시의 앞부분으로 끝나는 꼬리는 다음 조각까지 들고 있는다.
 LEAK_WORDS = ("-=", "=-", "---", "report_current_artwork", "report_comparison")
 
@@ -274,7 +277,13 @@ def flush_said(state):
     rest = clean_said(state["said_hold"])
     state["said_hold"] = ""
     if state["said_leak"]:
-        print(f"[live] 모델 속 글이 답변 받아쓰기에 섞여 와서 걸러 냈다: {state['said_leak'][:300]!r}")
+        # 표시 뒤에는 도슨트가 관람객에게 한 말이 이어져 있다. 배포할 때 이 출력을 파일로
+        # 넘기면 그 말이 저장되므로(AGENTS.md: 음성은 처리에만 쓰고 저장하지 않는다)
+        # 표시 부분만 찍고 나머지는 길이만 적는다.
+        head = state["said_leak"][:LEAK_LOG_CHARS]
+        hidden = len(state["said_leak"]) - len(head)
+        print(f"[live] 모델 속 글이 답변 받아쓰기에 섞여 와서 걸러 냈다: {head!r}"
+              + (f" + 뒤에 {hidden}자" if hidden else ""))
         state["said_leak"] = ""
     return rest
 
@@ -849,9 +858,12 @@ async def live(ws: WebSocket):
                 if state["usage"] is not None:
                     # Gemini가 주는 숫자는 세션 누적이다(11/18 실측: total 2053→2522→3849→4166).
                     # 그대로 적으면 턴마다 더할 수 없으니 앞 턴과의 차이를 적는다.
+                    # 그때의 작품을 같이 적는다. 없으면 어느 작품 설명이 비싼지 알 수 없다.
+                    # 작품을 아직 모르는 턴(인사)은 빈 값이 된다.
                     now_usage = visit_log.usage_fields(state["usage"])
-                    vlog.event("usage", **{k: max(0, v - state["usage_seen"].get(k, 0))
-                                           for k, v in now_usage.items()})
+                    vlog.event("usage", artwork_id=state["artwork_id"],
+                               **{k: max(0, v - state["usage_seen"].get(k, 0))
+                                  for k, v in now_usage.items()})
                     state["usage_seen"] = now_usage
                     state["usage"] = None
                 to_browser.put_nowait(("text", {"type": "turn_complete"}))

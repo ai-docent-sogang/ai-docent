@@ -56,7 +56,9 @@ ALLOWED: dict[str, set[str]] = {
     "question": {"artwork_id", "channel", "label", "outcome", "first_audio_ms"},
     "comparison": {"artwork_id", "comparison_id", "via"},
     "quality": {"issue", "kept_conversation"},
-    "usage": {"input_audio", "input_image", "input_text", "output_audio", "total"},
+    # usage의 artwork_id: 어느 작품 설명이 비싼지 알려면 턴마다의 작품이 있어야 한다.
+    # 작품을 아직 모르는 턴(인사)은 빈 값이다.
+    "usage": {"artwork_id", "input_audio", "input_image", "input_text", "output_audio", "total"},
     "visit_end": {"reason", "duration_s", "counts"},
 }
 # quality.issue가 가질 수 있는 값. 그 밖은 거부한다.
