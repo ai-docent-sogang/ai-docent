@@ -60,7 +60,7 @@ ALLOWED: dict[str, set[str]] = {
     "visit_end": {"reason", "duration_s", "counts"},
 }
 # quality.issue가 가질 수 있는 값. 그 밖은 거부한다.
-QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close")
+QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_closef")
 
 
 class FieldNotAllowed(ValueError):
@@ -140,6 +140,28 @@ def purge_old(folder: Path, keep_days: int, now: float) -> list[str]:
             path.unlink()
             gone.append(path.name)
     return gone
+
+
+def usage_fields(meta) -> dict:
+    """Gemini의 `usage_metadata` 하나를 `usage` 사건의 칸으로 바꾼다.
+
+    SDK를 부르지 않는다(값만 읽는다). 종류별 숫자는 `prompt_tokens_details`·
+    `response_tokens_details`에 `modality`(AUDIO/IMAGE/TEXT)와 `token_count`로 들어 있다.
+    없는 값은 0으로 둔다. 종류별 합이 전체와 다를 수 있다(생각 토큰 등은 종류가 없다).
+    """
+    out = {"input_audio": 0, "input_image": 0, "input_text": 0, "output_audio": 0, "total": 0}
+    if meta is None:
+        return out
+    out["total"] = int(getattr(meta, "total_token_count", 0) or 0)
+    for details, prefix in ((getattr(meta, "prompt_tokens_details", None), "input"),
+                            (getattr(meta, "response_tokens_details", None), "output")):
+        for item in details or ():
+            modality = getattr(item, "modality", None)
+            name = str(getattr(modality, "name", modality) or "").lower()
+            key = f"{prefix}_{name}"
+            if key in out:
+                out[key] += int(getattr(item, "token_count", 0) or 0)
+    return out
 
 
 class NullLog:

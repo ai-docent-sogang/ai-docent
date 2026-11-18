@@ -188,7 +188,58 @@ with tempfile.TemporaryDirectory() as tmp:
     check("visitor로 켜면 mock이라고 적어도 visitor로 남는다",
           all(r["source_kind"] == "visitor" for r in lines(tmp)))
 
-print("\n8. 설계 문서와 코드가 같은 사건을 말한다")
+print("\n8. Gemini 사용량을 usage 사건의 칸으로 바꾼다")
+
+
+class FakeModality:
+    def __init__(self, name):
+        self.name = name
+
+
+class FakeCount:
+    def __init__(self, modality, token_count):
+        self.modality, self.token_count = modality, token_count
+
+
+class FakeUsage:
+    def __init__(self, total=None, prompt=(), response=()):
+        self.total_token_count = total
+        self.prompt_tokens_details = list(prompt)
+        self.response_tokens_details = list(response)
+
+
+got = visit_log.usage_fields(FakeUsage(
+    total=2950,
+    prompt=[FakeCount(FakeModality("AUDIO"), 1200), FakeCount(FakeModality("IMAGE"), 800),
+            FakeCount(FakeModality("TEXT"), 40)],
+    response=[FakeCount(FakeModality("AUDIO"), 950)]))
+check("종류별 숫자를 칸에 나눠 담는다",
+      got == {"input_audio": 1200, "input_image": 800, "input_text": 40,
+              "output_audio": 950, "total": 2950}, str(got))
+check("사용량이 안 오면 전부 0", visit_log.usage_fields(None)
+      == {"input_audio": 0, "input_image": 0, "input_text": 0, "output_audio": 0, "total": 0})
+check("빈 사용량도 터지지 않는다", visit_log.usage_fields(FakeUsage())["total"] == 0)
+got = visit_log.usage_fields(FakeUsage(
+    total=10, prompt=[FakeCount(FakeModality("VIDEO"), 7), FakeCount(None, 3)]))
+check("모르는 종류는 버리고 전체만 남긴다", got["total"] == 10 and sum(
+    v for k, v in got.items() if k != "total") == 0, str(got))
+got = visit_log.usage_fields(FakeUsage(
+    prompt=[FakeCount("AUDIO", 5), FakeCount("audio", 5)]))
+check("같은 종류가 여러 번 와도 더한다(글자로 와도 읽는다)", got["input_audio"] == 10, str(got))
+
+with tempfile.TemporaryDirectory() as tmp:
+    env(LIVE_VISIT_LOG="team", LIVE_VISIT_DIR=tmp)
+    clock, _ = fake_clock()
+    log = visit_log.start(mode="handsfree", model="m", voice="Kore", clock=clock)
+    log.event("usage", **visit_log.usage_fields(FakeUsage(
+        total=100, prompt=[FakeCount(FakeModality("AUDIO"), 60)],
+        response=[FakeCount(FakeModality("AUDIO"), 40)])))
+    log.end()
+    check("usage_fields의 결과가 그대로 usage 사건에 들어간다",
+          lines(tmp)[1]["input_audio"] == 60 and lines(tmp)[1]["total"] == 100)
+
+
+print("\n9. 설계 문서와 코드가 같은 사건을 말한다")
 design = (Path(__file__).resolve().parent.parent / "docs/FE1/관람기록_설계.md").read_text(encoding="utf-8")
 for kind in visit_log.ALLOWED:
     check(f"설계 문서에 `{kind}`가 적혀 있다", f"`{kind}`" in design)
