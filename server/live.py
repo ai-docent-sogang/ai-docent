@@ -594,6 +594,12 @@ async def live(ws: WebSocket):
         이번 턴에 마지막으로 받은 받아쓰기 조각의 시각을 쓴다. 받아쓰기는 늦게 오므로 답변이
         그보다 먼저 시작되는 일이 있다 — 11/18 실측에서 그렇게 해서 123ms라는 거짓 값이 나왔다.
         그런 턴은 잴 수 없는 것으로 보고 -1을 적는다. 작은 수를 적으면 평균이 거짓이 된다.
+
+        **이 숫자는 관람객이 기다린 시간보다 작다.** 11/18 실측에서 voice_activity 신호는
+        한 번도 오지 않았고(두 번의 왕복, 0건), 그래서 늘 받아쓰기를 기준으로 쓴다. 같은 턴을
+        폰 쪽에서 재면 943ms/1646ms인 것이 1932ms/2481ms였다 — 약 1초 낮게 나온다. 턴 사이를
+        견주는 데는 쓸 수 있지만, "관람객이 몇 초 기다렸다"로 말하면 안 된다. 제대로 재려면
+        voice_activity가 오게 되거나(Google 쪽), 폰이 말이 끝난 시각을 보내 줘야 한다.
         """
         audio_at = state["first_audio_at"]
         base = state["speech_end_at"] or state["heard_at"]
@@ -797,7 +803,6 @@ async def live(ws: WebSocket):
             if activity is not None:
                 kind = getattr(activity, "voice_activity_type", None)
                 name = str(getattr(kind, "name", kind) or "")
-                print(f"[live] 말 신호: {name}")   # 11/18: 이 신호가 오는지 확인하는 중
                 if "END" in name.upper():
                     state["speech_end_at"] = time.monotonic()
             if getattr(m, "usage_metadata", None) is not None:
