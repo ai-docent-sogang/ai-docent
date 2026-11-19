@@ -109,6 +109,8 @@ class LiveConversation:
         """완료된 답변과 작품·비교 정보를 관람 기억에 반영하고 질문 횟수를 기록한다."""
         said = self.state["said"].strip()
         if not said:
+            # 말이 없는 턴에도 보고는 올 수 있다. 비우지 않으면 다음 질문에 그 라벨이 붙는다.
+            self.state["label"] = self.state["outcome"] = ""
             return
         if (self.mode == "handsfree" and not self.state["comparison_called"]
                 and self.state["artwork_id"] in self.artworks):
