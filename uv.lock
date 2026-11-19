@@ -20,13 +20,11 @@ dependencies = [
     { name = "python-multipart" },
     { name = "requests" },
     { name = "uvicorn" },
-]
-
-[package.optional-dependencies]
-live = [
     { name = "websockets", version = "16.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "websockets", version = "17.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+
+[package.optional-dependencies]
 recognition = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -51,9 +49,9 @@ requires-dist = [
     { name = "torch", marker = "extra == 'recognition'", specifier = ">=2.4" },
     { name = "transformers", marker = "extra == 'recognition'", specifier = ">=4.45" },
     { name = "uvicorn", specifier = ">=0.30" },
-    { name = "websockets", marker = "extra == 'live'", specifier = ">=16.1" },
+    { name = "websockets", specifier = ">=16.1" },
 ]
-provides-extras = ["live", "recognition"]
+provides-extras = ["recognition"]
 
 [[package]]
 name = "annotated-doc"

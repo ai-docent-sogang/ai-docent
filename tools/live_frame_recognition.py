@@ -3,7 +3,7 @@
 담당: FE1
 같이 보는 파일: tools/live_relay_spike.py (음성 중계. 프레임 전송을 여기에 더할지 판단하려고 만든 도구),
               docs/FE1/FE1_관람분석_측정계획.md (체류 판정이 이 결과에 달려 있다),
-              docs/meeting/요청_2026-11-16_관람분석.md (11/18에 가져갈 숫자)
+              docs/FE1/FE1_관람분석_측정계획.md (11/18에 가져갈 숫자)
 
 왜 재는가:
   체류·동선을 재려면 "그 작품이 계속 보이고 있다"는 기록이 필요하다. 지금 앱은 질문할 때
@@ -23,7 +23,7 @@
     11/13에 정한 합격 기준(11점 한정 Top-1 70%)과 같은 조건이다.
   - 사진은 메모리에서만 다루고 저장하지 않는다. 저장소에 사진을 넣지 않는다(AGENTS.md).
 
-설치: uv sync --extra live
+설치: uv sync (websockets는 11/17에 기본 의존성으로 옮겼다)
 실행:
     PYTHONPATH=. uv run python tools/live_frame_recognition.py --answers data/eval/recognition_answers.csv
     PYTHONPATH=. uv run python tools/live_frame_recognition.py --self-test   # 프레임 전송 경로만 확인

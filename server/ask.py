@@ -1,16 +1,7 @@
-"""작품 ID와 질문 텍스트를 받아 도슨트 답변 텍스트를 돌려주는 API (텍스트 전용).
+"""Live 대화의 대체 경로인 텍스트 질의 API (`POST /api/ask`, 담당 BE1).
 
-담당: BE1
-같이 보는 파일: docs/api.md (POST /api/ask 형식), app.py (이 라우터를 등록), content.py (작품 CSV),
-              prompts.py (도슨트 규칙)
-
-/api/turn과 다른 점: 음성·사진을 받지 않는다. 받아쓰기는 FE1의 브라우저 음성 인식이, 작품 ID는
-FE1(또는 작품 인식 단계)이 정해서 보낸다. Gemini에는 그 작품 한 점의 자료만 보낸다.
-11/11 측정: 보내는 양을 줄여도 빨라지지 않았다(/api/ask 약 7.9초, 거의 전부 모델이 답을 만드는 시간).
-11/11 회의에서 대화는 Live로 가기로 했고, 이 경로는 Live가 실패할 때의 안전망으로 남긴다.
-
-임시 답변 모드: .env에 ASK_MOCK=1을 넣으면 Gemini를 부르지 않고 고정 답변을 돌려준다.
-FE1이 서버 연결과 화면·음성 흐름을 먼저 만들 때 쓴다. API 키가 없어도 동작한다.
+작품 한 점의 자료로 답한다. `ASK_MOCK=1`로 API 키 없이 연동을 시험할 수 있다.
+요청·응답 형식은 `docs/api.md` 참고.
 """
 
 import os
@@ -24,36 +15,34 @@ from .prompts import ASK_INSTRUCTION
 
 router = APIRouter()
 
-# app.py가 서버를 켤 때 채워 준다(작품 CSV, Gemini 연결 함수). 같은 CSV를 두 번 읽지 않기 위함.
+# app.py에서 읽은 작품 목록과 Gemini 클라이언트를 공유한다.
 artworks = {}
 get_client = None
 
-# 자료가 없거나 Gemini가 실패했을 때 관람객에게 읽어 줄 안전한 문장
 FALLBACK_NO_ARTWORK = "I'm sorry, I don't have information about this painting yet. Could you tell me which painting you are looking at?"
 FALLBACK_ERROR = "Sorry, I need a moment. Could you ask me again?"
 
 
 class AskRequest(BaseModel):
-    artwork_id: str  # data/artworks.csv의 artwork_id (예: "KHD_SSIREUM")
-    question: str  # 관람객의 질문(영어 텍스트)
+    artwork_id: str
+    question: str
 
 
 class AskResponse(BaseModel):
-    answer: str  # 화면에 표시하고 음성으로 읽어 줄 답변
+    answer: str
     artwork_id: str
-    artwork_title: str  # 작품 영문 제목. 모르는 작품이면 ""
+    artwork_title: str
     status: str  # "ok" | "mock" | "no_artwork" | "error"
-    source_url: str  # 답변 근거 자료의 출처(e뮤지엄 페이지). 없으면 ""
-    latency_ms: int  # 서버 안에서 답변을 만드는 데 걸린 시간(밀리초)
-    model: str = ""  # 실제로 답한 Gemini 모델. 임시 답변·실패면 ""
+    source_url: str
+    latency_ms: int
+    model: str = ""
 
 
 def build_artwork_context(art):
-    """작품 한 점의 확인된 사실(key_facts)만 Gemini가 읽을 글로 만든다. /api/ask와 Live가 같이 쓴다.
+    """텍스트 질의와 Live에서 공유하는 작품 근거를 구성한다.
 
-    지정 등급(designation)을 따로 적는다: key_facts의 "designated a Treasure"를 모델이
-    "national treasure"로 말한 사례가 있었다(11/11 방식 비교 채점, Q03).
-    medium은 "Painting surface"로 적는다: "silk"를 인물의 비단 옷으로 말한 사례가 있었다(Q07).
+    보물·국보와 화폭·인물 의상의 혼동을 줄이도록 지정 등급과 화폭 재질을 명시한다
+    (11/11 방식 비교 Q03·Q07).
     """
     facts = "\n".join(f"- {fact}" for fact in art["key_facts"])
     designation = art.get("designation") or "none recorded"
@@ -65,15 +54,12 @@ def build_artwork_context(art):
     )
 
 
-# 첫 모델이 과부하(503)·사용 불가(404)·시간 초과면 다음 모델로 넘어간다. .env의 GEMINI_MODEL이 맨 앞.
-# 바꾸려면 .env에 ASK_FALLBACK_MODELS=모델1,모델2 로 적는다.
 DEFAULT_FALLBACK_MODELS = "gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite"
-# 모델 하나에 기다리는 최대 시간(밀리초). 관람객이 무한정 기다리지 않게 짧게 두고, 자동 재시도는 끈다.
 PER_MODEL_TIMEOUT_MS = 12000
 
 
 def candidate_models():
-    """시도할 모델 순서: GEMINI_MODEL → ASK_FALLBACK_MODELS (중복 제거)."""
+    """`GEMINI_MODEL` 다음에 `ASK_FALLBACK_MODELS`를 중복 없이 시도한다."""
     names = [os.environ.get("GEMINI_MODEL", "")]
     names += os.environ.get("ASK_FALLBACK_MODELS", DEFAULT_FALLBACK_MODELS).split(",")
     seen = []
@@ -84,7 +70,7 @@ def candidate_models():
 
 
 def generate_answer(art, question):
-    """Gemini에 작품 자료와 질문을 보내 (답변 텍스트, 답한 모델 이름)을 받는다. 모두 실패하면 마지막 오류를 올린다."""
+    """첫 성공 응답의 본문과 모델명을 반환한다. 모두 실패하면 마지막 오류를 올린다."""
     models = candidate_models()
     if not models:
         raise RuntimeError("GEMINI_MODEL is not set in .env")
@@ -108,7 +94,7 @@ def generate_answer(art, question):
                 return answer, model
             last_error = RuntimeError(f"{model}: empty answer")
         except SystemExit:
-            raise  # API 키 없음: 다른 모델로 바꿔도 소용없다
+            raise  # API 키 누락은 모델을 바꿔도 해결되지 않는다.
         except Exception as e:
             print(f"[/api/ask] {model} failed, trying next: {e!r}"[:300])
             last_error = e
@@ -146,7 +132,7 @@ def ask(req: AskRequest):
         return respond(f"(mock answer) You asked about {art['title_en']}: \"{question}\"", "mock")
     try:
         answer, model = generate_answer(art, question)
-    except (Exception, SystemExit) as e:  # 모든 모델 실패, 키·모델 설정 문제 등(키가 없으면 SystemExit)
-        print(f"[/api/ask] Gemini error: {e!r}"[:300])  # 서버 터미널에서 원인 확인용
+    except (Exception, SystemExit) as e:  # API 키 누락의 SystemExit도 안내 문장으로 처리한다.
+        print(f"[/api/ask] Gemini error: {e!r}"[:300])
         return respond(FALLBACK_ERROR, "error")
     return respond(answer, "ok", model)
