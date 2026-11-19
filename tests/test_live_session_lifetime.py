@@ -30,6 +30,8 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 from google.genai.errors import APIError
 
+import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
+
 import server.live as relay
 import server.session as sessions
 from server import live_config as settings

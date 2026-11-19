@@ -15,6 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
+
 from fastapi.testclient import TestClient  # noqa: E402
 
 from server import live as relay  # noqa: E402
