@@ -5,6 +5,7 @@ from google.genai import types
 
 from .live_context import build_live_instruction, profile_block
 from .prompts import LIVE_INSTRUCTION
+from .question_labels import LABEL_GUIDE, LABELS, OUTCOME_GUIDE, OUTCOMES
 
 UNKNOWN = "unknown"
 
@@ -132,6 +133,17 @@ def handsfree_tools(artworks, verified_comparisons):
                     type=types.Type.STRING, enum=sorted(verified_comparisons),
                     description="A comparison_id from the current artwork's comparison options."),
             })),
+        types.FunctionDeclaration(
+            name="report_question",
+            description=("Report how you classified the visitor's latest question and whether you can "
+                         "answer it from the verified facts. Call it once per visitor question, before "
+                         "you answer."),
+            parameters=types.Schema(type=types.Type.OBJECT, required=["label"], properties={
+                "label": types.Schema(type=types.Type.STRING, enum=list(LABELS),
+                                      description=LABEL_GUIDE),
+                "outcome": types.Schema(type=types.Type.STRING, enum=list(OUTCOMES),
+                                        description=OUTCOME_GUIDE),
+            })),
     ])]
 
 
@@ -158,7 +170,10 @@ def handsfree_instruction(profile, artworks):
         "and kindly ask the visitor to point the camera at the painting. Never guess between two works.\n"
         "- Before you start a comparison with a foreign painting, call report_comparison with its "
         "comparison_id from the latest COMPARISON OPTIONS. Do not compare with anything else.\n"
-        "- Never read ids or function names aloud.\n"
+        "- Whenever the visitor asks you something, call report_question before you answer: once per "
+        "question, with the label that fits what they asked for and the outcome you are about to give. "
+        "This is for the museum's own records and never changes what you say.\n"
+        "- Never read ids, labels, or function names aloud.\n"
         "- When the visitor only makes a short backchannel or filler (for example \"mm-hmm\", \"yeah, I see\", "
         "\"uh-huh\"), talks to themselves, or talks with someone else, do not respond at all: produce no "
         "words. Never announce, explain, or describe that you are staying silent. "

@@ -13,6 +13,7 @@ from .content import rank_comparisons
 from .live_config import UNKNOWN
 from .live_context import MAX_COMPARISON_OPTIONS, REGION_TAGS, comparison_block, home_of
 from .live_transcript import comparison_in_transcript
+from .question_labels import normalize_label, normalize_outcome
 
 
 def comparison_display(comparison_id, verified_comparisons):
@@ -64,6 +65,8 @@ class LiveConversation:
                  "said_hold": "", "said_leak": "",
                  # 인사 턴이 아직 끝나지 않았다(handsfree). 그동안 사진은 들고만 있는다.
                  "opening_turn": False,
+                 # 이번 턴에 report_question이 보고한 질문 유형과 답변 결과
+                 "label": "", "outcome": "",
                  # 질문/첫 음성 시각과 채널, 현재 연결의 누적 사용량을 추적한다.
                  "heard_at": None, "first_audio_at": None, "channel": "", "usage": None,
                  "usage_seen": {}, "speech_end_at": None}
@@ -119,11 +122,15 @@ class LiveConversation:
                                 via="transcript")
         self.visit.record_turn(self.state["heard"].strip(), SimpleNamespace(
             artwork_id=self.state["artwork_id"], comparison_id=self.state["comparison_id"], reply=said))
-        # 인사 턴은 질문으로 세지 않는다. label·outcome은 FE3·BE1 규칙 확정 후 채운다.
+        # 인사 턴은 질문으로 세지 않는다. 라벨·결과는 Live가 report_question으로 보고한 값만 쓰고
+        # 답변 글에서 추론하지 않는다(docs/FE1/관람기록_설계.md). 보고가 없으면 unknown이다.
         if self.state["heard"].strip():
             self.vlog.event("question", artwork_id=self.state["artwork_id"],
-                            channel=self.state["channel"] or "voice", label="", outcome="",
+                            channel=self.state["channel"] or "voice",
+                            label=self.state["label"] or "unknown",
+                            outcome=self.state["outcome"] or "unknown",
                             first_audio_ms=self.first_audio_ms())
+        self.state["label"] = self.state["outcome"] = ""
         self.state["heard"] = self.state["said"] = self.state["comparison_id"] = ""
         self.state["comparison_called"] = False
         self.state["heard_at"] = self.state["first_audio_at"] = self.state["speech_end_at"] = None
@@ -182,5 +189,10 @@ class LiveConversation:
                                         f"({pair['foreign_date']}, {pair['foreign_collection']})",
                     "angle": pair["angle"], "similarities": pair["similarities"],
                     "differences": pair["differences"]}
+        if call.name == "report_question":
+            # 관람객이 무엇을 물었는지만 기록한다. 질문 원문은 어디에도 남기지 않는다.
+            self.state["label"] = normalize_label(args.get("label"))
+            self.state["outcome"] = normalize_outcome(args.get("outcome"))
+            return {"ok": True}
         return {"ok": False, "error": f"unknown function {call.name}"}
 

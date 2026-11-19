@@ -33,6 +33,7 @@ from google.genai.errors import APIError
 import server.live as relay
 import server.session as sessions
 from server import live_config as settings
+from server import question_labels
 from server.app import app as server_app
 from server.live_conversation import ranked_comparison_ids
 from server.live_transcript import clean_said, comparison_in_transcript
@@ -347,7 +348,12 @@ aad = cfg.realtime_input_config.automatic_activity_detection
 check("작품 없이도 연결된다(ready)", got[0].get("type") == "ready" and got[0].get("mode") == "handsfree", str(got[0]))
 check("자동 음성 감지를 켠다", aad is not None and aad.disabled is False, str(aad))
 names = [f.name for t in cfg.tools for f in t.function_declarations]
-check("함수 두 개를 선언한다", names == ["report_current_artwork", "report_comparison"], str(names))
+check("함수 세 개를 선언한다",
+      names == ["report_current_artwork", "report_comparison", "report_question"], str(names))
+q_props = cfg.tools[0].function_declarations[2].parameters.properties
+check("질문 함수는 라벨 10개와 결과 4개만 받는다",
+      list(q_props["label"].enum) == list(question_labels.LABELS)
+      and list(q_props["outcome"].enum) == list(question_labels.OUTCOMES), str(list(q_props)))
 enum = cfg.tools[0].function_declarations[0].parameters.properties["artwork_id"].enum
 check("작품 함수 값은 11개 ID + unknown", len(enum) == 12 and "unknown" in enum and ARTWORK in enum, str(enum))
 check("압축·재개 설정을 그대로 쓴다(영상이 섞이면 압축 없이 2분)",
@@ -874,6 +880,8 @@ def visit_log_run(**envs):
             [msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])],
             [msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])],
             [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
+            # 대문자·공백이 섞인 값을 보내 정규화까지 함께 본다
+            [msg(calls=[("report_question", {"label": " Artist ", "outcome": "answered"})])],
             [msg(heard="Who painted this and when?"), msg(audio=b"\x01"),
              msg(said="Kim Hong-do painted it in the late eighteenth century."),
              msg(usage=FakeUsage(2522)), msg(interrupted=True), msg(turn_complete=True)],
@@ -910,8 +918,9 @@ check("끼어들기가 남는다", any(r["event"] == "quality" and r["issue"] ==
 question = next((r for r in rows if r["event"] == "question"), None)
 check("질문 한 번이 남는다", question is not None and question["artwork_id"] == ARTWORK
       and question["channel"] == "voice", str(question))
-check("라벨과 결과는 아직 빈 값이다(FE3·BE1 결정 전)",
-      question is not None and question["label"] == "" and question["outcome"] == "", str(question))
+check("Live가 보고한 라벨과 결과가 남는다(대문자·공백은 정규화된다)",
+      question is not None and question["label"] == "artist"
+      and question["outcome"] == "answered", str(question))
 check("첫 음성까지 걸린 시간을 잰다(못 재면 -1)",
       question is not None and isinstance(question["first_audio_ms"], int), str(question))
 check("시즌·전시실이 들어간다",

@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory() as tmp:
     clock, _ = fake_clock()
     log = visit_log.start(mode="handsfree", model="gemini-3.8-live", voice="Kore", clock=clock)
     log.event("artwork_identified", artwork_id="KHD_SSIREUM", via="function")
-    log.event("question", artwork_id="KHD_SSIREUM", channel="voice", label="", outcome="",
+    log.event("question", artwork_id="KHD_SSIREUM", channel="voice", label="fact", outcome="answered",
               first_audio_ms=1659)
     log.event("comparison", artwork_id="KHD_SSIREUM", comparison_id="C_KHD_BRUEGEL", via="function")
     log.event("usage", input_audio=1200, input_image=800, input_text=0, output_audio=950, total=2950)
@@ -106,13 +106,14 @@ with tempfile.TemporaryDirectory() as tmp:
     clock, _ = fake_clock()
     log = visit_log.start(mode="handsfree", model="m", voice="Kore", clock=clock)
 
-    def refused(label, kind, **fields):
+    def refused(name, kind, **fields):
+        # 첫 인자 이름은 name이다. 거부 대상에 label= 칸이 있어서 이름이 겹치면 안 된다.
         try:
             log.event(kind, **fields)
         except visit_log.FieldNotAllowed as exc:
-            check(label, True, str(exc)[:70])
+            check(name, True, str(exc)[:70])
         else:
-            check(label, False, "거부하지 않았다")
+            check(name, False, "거부하지 않았다")
 
     refused("들은 말을 넣으려 하면 거부한다", "question", artwork_id="KHD_SSIREUM",
             heard="Who painted this and when?")
@@ -130,6 +131,27 @@ with tempfile.TemporaryDirectory() as tmp:
             check(f"quality issue {issue!r}를 받는다", False, str(exc)[:80])
         else:
             check(f"quality issue {issue!r}를 받는다", True)
+    refused("question에 목록 밖 라벨은 거부한다", "question", artwork_id="KHD_SSIREUM",
+            label="price", outcome="answered")
+    refused("question에 목록 밖 결과는 거부한다", "question", artwork_id="KHD_SSIREUM",
+            label="fact", outcome="error")
+    refused("question에 라벨이 빠지면 거부한다", "question", artwork_id="KHD_SSIREUM",
+            outcome="answered")
+    refused("question에 결과가 빠지면 거부한다", "question", artwork_id="KHD_SSIREUM", label="fact")
+    for label in visit_log.LABELS:
+        try:
+            log.event("question", artwork_id="KHD_SSIREUM", label=label, outcome="answered")
+        except visit_log.FieldNotAllowed as exc:
+            check(f"라벨 {label!r}를 받는다", False, str(exc)[:80])
+        else:
+            check(f"라벨 {label!r}를 받는다", True)
+    for outcome in visit_log.OUTCOMES:
+        try:
+            log.event("question", artwork_id="KHD_SSIREUM", label="fact", outcome=outcome)
+        except visit_log.FieldNotAllowed as exc:
+            check(f"결과 {outcome!r}를 받는다", False, str(exc)[:80])
+        else:
+            check(f"결과 {outcome!r}를 받는다", True)
     # live.py가 실제로 보내는 값들. 한 글자 오타로 기록이 터진 적이 있다(11/18).
     for issue in ("interrupted", "reconnect", "resumed", "phone_idle_close"):
         try:
