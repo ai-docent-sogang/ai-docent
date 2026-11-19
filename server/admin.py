@@ -1,9 +1,9 @@
 """운영자용 라우터 (담당 FE1). 관람객 화면이 아니다(관람객 화면은 `/`).
 
-- `GET  /ops`                             운영 화면(`static/ops.html`)
-- `GET  /api/ops/stats`                   관람 기록 집계
-- `GET  /api/ops/artworks`                작품 목록과 켜짐·꺼짐
-- `POST /api/ops/artworks/{id}/on_view`   작품을 켜고 끈다
+- `GET  /admin`                             운영 화면(`static/admin.html`)
+- `GET  /api/admin/stats`                   관람 기록 집계
+- `GET  /api/admin/artworks`                작품 목록과 켜짐·꺼짐
+- `POST /api/admin/artworks/{id}/on_view`   작품을 켜고 끈다
 
 집계 수식은 `server/visit_stats.py`에 있고, 켜기/끄기 상태는 `server/on_view.py`에 있다.
 이 파일은 라우팅과 입력 검사, 작품 제목 붙이기만 한다.
@@ -32,14 +32,14 @@ class OnViewRequest(BaseModel):
     on_view: bool
 
 
-@router.get("/ops")
-def ops_page():
+@router.get("/admin")
+def admin_page():
     """운영 화면. 대시보드, 질문 라벨, 작품 켜기/끄기 세 탭이 한 파일에 있다."""
-    return FileResponse(STATIC_DIR / "ops.html")
+    return FileResponse(STATIC_DIR / "admin.html")
 
 
-@router.get("/api/ops/stats")
-def ops_stats(from_day: str = "", to_day: str = "", source_kind: str = "team_rehearsal"):
+@router.get("/api/admin/stats")
+def admin_stats(from_day: str = "", to_day: str = "", source_kind: str = "team_rehearsal"):
     """관람 기록을 집계해 돌려준다. 형식은 docs/api.md 참고.
 
     받는 값(쿼리): from_day·to_day(YYYY-MM-DD, 비우면 오늘 하루),
@@ -63,8 +63,8 @@ def ops_stats(from_day: str = "", to_day: str = "", source_kind: str = "team_reh
     return out
 
 
-@router.get("/api/ops/artworks")
-def ops_artworks():
+@router.get("/api/admin/artworks")
+def admin_artworks():
     """작품 목록과 켜짐·꺼짐. 형식은 docs/api.md 참고.
 
     돌려주는 값: artworks(작품 ID·제목·on_view), off(꺼진 작품 ID), note(재시작하면 초기화)
@@ -73,15 +73,15 @@ def ops_artworks():
             "note": "서버를 다시 켜면 .env의 LIVE_OFF_ARTWORKS만 남고 나머지는 모두 켜진다"}
 
 
-@router.post("/api/ops/artworks/{artwork_id}/on_view")
-def ops_set_on_view(artwork_id: str, body: OnViewRequest):
+@router.post("/api/admin/artworks/{artwork_id}/on_view")
+def admin_set_on_view(artwork_id: str, body: OnViewRequest):
     """작품을 켜거나 끈다. 형식은 docs/api.md 참고.
 
     받는 값: 경로의 artwork_id, 본문 {"on_view": true|false}
-    돌려주는 값: changed(실제로 바뀌었는지)와 /api/ops/artworks와 같은 목록
+    돌려주는 값: changed(실제로 바뀌었는지)와 /api/admin/artworks와 같은 목록
     오류: 404 모르는 artwork_id
     """
     if artwork_id not in artworks:
         raise HTTPException(404, "artwork not found")
     changed = on_view.set_on(artwork_id, body.on_view)
-    return {"changed": changed, **ops_artworks()}
+    return {"changed": changed, **admin_artworks()}

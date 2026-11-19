@@ -1,6 +1,6 @@
 // 운영 화면의 동작. 담당: FE1.
 //
-// 같이 보는 파일: ops.html (화면), server/ops.py (API), server/visit_stats.py (집계 수식),
+// 같이 보는 파일: admin.html (화면), server/admin.py (API), server/visit_stats.py (집계 수식),
 //               docs/api.md의 "운영 API" 절, docs/FE1/FE1_관람분석_측정계획.md (지표 사전)
 //
 // 관람객 화면이 아니다. 관람객 화면은 index.html(FE2)이고 style.css를 함께 쓰지 않는다.
@@ -8,7 +8,7 @@
 // 비율은 서버가 만들지 않는다. 분자와 분모를 받아 여기서 `a/b (p%)`로 찍고 분모가 0이면
 // N/A로 둔다. 작품 제목은 config.js의 사본을 쓰지 않고 API 응답의 title_en만 쓴다.
 //
-// 아래쪽 render*()만 DOM을 만진다. 위쪽 함수는 DOM 없이 돌아가고 tests/test_ops_view.mjs가
+// 아래쪽 render*()만 DOM을 만진다. 위쪽 함수는 DOM 없이 돌아가고 tests/test_admin_view.mjs가
 // 그것만 시험한다.
 
 export const GROUP_NAMES = {
@@ -73,21 +73,21 @@ export function labelNames(stats) {
 /** 기간과 자료 종류로 집계를 받아 온다. fetch를 인자로 받아 시험에서 가짜를 넣는다. */
 export async function loadStats({ fromDay, toDay, sourceKind }, fetchImpl = fetch) {
   const query = new URLSearchParams({ from_day: fromDay, to_day: toDay, source_kind: sourceKind });
-  const response = await fetchImpl(`/api/ops/stats?${query}`);
+  const response = await fetchImpl(`/api/admin/stats?${query}`);
   if (!response.ok) throw new Error(`집계를 받지 못했다 (${response.status})`);
   return response.json();
 }
 
 /** 작품 목록과 켜짐·꺼짐을 받아 온다. */
 export async function loadArtworks(fetchImpl = fetch) {
-  const response = await fetchImpl("/api/ops/artworks");
+  const response = await fetchImpl("/api/admin/artworks");
   if (!response.ok) throw new Error(`작품 목록을 받지 못했다 (${response.status})`);
   return response.json();
 }
 
 /** 작품을 켜거나 끈다. 응답에 목록이 함께 오므로 그것으로 화면을 다시 그린다. */
 export async function setOnView(artworkId, onView, fetchImpl = fetch) {
-  const response = await fetchImpl(`/api/ops/artworks/${encodeURIComponent(artworkId)}/on_view`, {
+  const response = await fetchImpl(`/api/admin/artworks/${encodeURIComponent(artworkId)}/on_view`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ on_view: onView }),

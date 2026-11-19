@@ -1,9 +1,9 @@
-"""운영 API(server/ops.py) 시험.
+"""운영 API(server/admin.py) 시험.
 
 담당: FE1. 집계 조회와 작품 켜기/끄기가 서버를 거쳐 동작하는지 본다.
 
 pytest로는 수집되지 않는다. 이렇게 돌린다:
-    PYTHONPATH=. uv run python tests/test_ops_api.py
+    PYTHONPATH=. uv run python tests/test_admin_api.py
 
 Gemini를 부르지 않는다. 기록은 JSONL을 직접 써서 넣는다.
 """
@@ -49,7 +49,7 @@ on_view.OFF.clear()
 
 print("\n1. 작품 목록과 켜짐·꺼짐을 돌려준다")
 with TestClient(server_app) as client:
-    got = client.get("/api/ops/artworks")
+    got = client.get("/api/admin/artworks")
     body = got.json()
     check("200으로 답한다", got.status_code == 200, str(got.status_code))
     check("작품 11점을 준다", len(body["artworks"]) == 11, str(len(body["artworks"])))
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory() as tmp:
     ])
     try:
         with TestClient(server_app) as client:
-            body = client.get("/api/ops/stats?from_day=2026-11-19&to_day=2026-11-19").json()
+            body = client.get("/api/admin/stats?from_day=2026-11-19&to_day=2026-11-19").json()
             check("관람 한 건을 센다", body["visits"]["total"] == 1, str(body["visits"]))
             found = next((a for a in body["artworks"] if a["artwork_id"] == ARTWORK), None)
             check("그 작품이 집계에 들어간다", found is not None and found["questions"] == 1,
@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory() as tmp:
             check("읽은 파일을 알려 준다", body["range"]["files"] == ["visits-20261119.jsonl"],
                   str(body["range"]["files"]))
             check("기간을 비우면 오늘 하루를 본다",
-                  client.get("/api/ops/stats").status_code == 200)
+                  client.get("/api/admin/stats").status_code == 200)
     finally:
         if saved is None:
             os.environ.pop("LIVE_VISIT_DIR", None)
@@ -101,12 +101,12 @@ with TestClient(server_app) as client:
     for name, query in (("날짜 형식이 틀리면 거부한다", "from_day=11/19&to_day=11/19"),
                         ("기간이 거꾸로면 거부한다", "from_day=2026-11-19&to_day=2026-11-18"),
                         ("모르는 자료 종류는 거부한다", "source_kind=visitors")):
-        got = client.get(f"/api/ops/stats?{query}")
+        got = client.get(f"/api/admin/stats?{query}")
         check(name, got.status_code == 400, f"{got.status_code} {got.json().get('detail','')[:40]}")
 
 print("\n4. 작품을 끄고 켠다")
 with TestClient(server_app) as client:
-    got = client.post(f"/api/ops/artworks/{ARTWORK}/on_view", json={"on_view": False})
+    got = client.post(f"/api/admin/artworks/{ARTWORK}/on_view", json={"on_view": False})
     body = got.json()
     check("200으로 답한다", got.status_code == 200, str(got.status_code))
     check("바뀌었다고 알린다", body["changed"] is True, str(body["changed"]))
@@ -114,10 +114,10 @@ with TestClient(server_app) as client:
     check("같은 응답에 목록을 함께 준다",
           next(a for a in body["artworks"] if a["artwork_id"] == ARTWORK)["on_view"] is False)
 
-    again = client.post(f"/api/ops/artworks/{ARTWORK}/on_view", json={"on_view": False}).json()
+    again = client.post(f"/api/admin/artworks/{ARTWORK}/on_view", json={"on_view": False}).json()
     check("같은 값을 또 보내면 바뀌지 않았다고 알린다", again["changed"] is False, str(again["changed"]))
 
-    missing = client.post("/api/ops/artworks/NOPE/on_view", json={"on_view": False})
+    missing = client.post("/api/admin/artworks/NOPE/on_view", json={"on_view": False})
     check("모르는 작품은 404", missing.status_code == 404, str(missing.status_code))
     check("오류 메시지는 영문 소문자", missing.json()["detail"] == "artwork not found",
           missing.json()["detail"])
@@ -128,19 +128,19 @@ check("relay.artworks는 11점 그대로다", len(relay.artworks) == 11, str(len
 check("relay.comparisons는 20쌍 그대로다", len(relay.comparisons) == 20, str(len(relay.comparisons)))
 
 with TestClient(server_app) as client:
-    back = client.post(f"/api/ops/artworks/{ARTWORK}/on_view", json={"on_view": True}).json()
+    back = client.post(f"/api/admin/artworks/{ARTWORK}/on_view", json={"on_view": True}).json()
     check("다시 켜면 꺼진 목록이 빈다", back["off"] == [], str(back["off"]))
 
 print("\n6. 운영 화면과 그 스크립트를 내려 준다")
 with TestClient(server_app) as client:
-    page = client.get("/ops")
-    check("/ops가 200으로 화면을 준다", page.status_code == 200, str(page.status_code))
+    page = client.get("/admin")
+    check("/admin가 200으로 화면을 준다", page.status_code == 200, str(page.status_code))
     check("관람객 화면이 아니라고 적혀 있다", "운영자용 화면" in page.text)
-    check("ops.js를 모듈로 불러온다", 'type="module" src="/static/ops.js"' in page.text)
+    check("admin.js를 모듈로 불러온다", 'type="module" src="/static/admin.js"' in page.text)
     # 주석에 파일 이름이 나오므로 불러오는 태그가 있는지로 본다
     check("관람객 style.css를 불러오지 않는다", 'href="/static/style.css"' not in page.text)
-    script = client.get("/static/ops.js")
-    check("/static/ops.js를 200으로 준다", script.status_code == 200, str(script.status_code))
+    script = client.get("/static/admin.js")
+    check("/static/admin.js를 200으로 준다", script.status_code == 200, str(script.status_code))
     check("세 탭이 화면에 있다",
           all(key in page.text for key in ("tab-dashboard", "tab-labels", "tab-onview")))
 

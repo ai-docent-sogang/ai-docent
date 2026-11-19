@@ -85,11 +85,11 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 ## 운영 API (FE1, 11/19 추가) — 관람객 화면이 아닙니다
 
-운영자가 보는 주소입니다. 코드: `server/ops.py`. 집계 수식은 `server/visit_stats.py`, 작품 켜기/끄기 상태는 `server/on_view.py`에 있습니다.
+운영자가 보는 주소입니다. 코드: `server/admin.py`. 집계 수식은 `server/visit_stats.py`, 작품 켜기/끄기 상태는 `server/on_view.py`에 있습니다.
 
 **인증이 없습니다.** 아래 `POST`는 상태를 바꾸므로 주소를 아는 사람이 작품을 끌 수 있습니다. 공개 주소(cloudflared 등)로 서버를 열 때는 운영 페이지를 쓰지 않습니다.
 
-### GET `/api/ops/stats` — 관람 기록 집계
+### GET `/api/admin/stats` — 관람 기록 집계
 
 보내는 값(쿼리):
 
@@ -119,11 +119,11 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 오류: 400 날짜 형식이 틀림 / 기간이 거꾸로 / 모르는 `source_kind`.
 
-### GET `/api/ops/artworks` — 작품 목록과 켜짐·꺼짐
+### GET `/api/admin/artworks` — 작품 목록과 켜짐·꺼짐
 
 받는 값: `artworks`(각 항목 `artwork_id`·`title_en`·`on_view`), `off`(꺼진 작품 ID 목록), `note`.
 
-### POST `/api/ops/artworks/{artwork_id}/on_view` — 작품 켜고 끄기
+### POST `/api/admin/artworks/{artwork_id}/on_view` — 작품 켜고 끄기
 
 보내는 값: `{"on_view": true}` 또는 `{"on_view": false}`. 받는 값: `changed`(실제로 바뀌었는지)와 위 목록을 함께 돌려줍니다. 오류: 404 모르는 `artwork_id`.
 
@@ -135,5 +135,5 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 | --- | --- |
 | 보내는 필드 | `server/app.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
 | 받는 필드 | `server/app.py`의 응답, `server/gemini_client.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
-| 운영 API의 집계 칸 | `server/visit_stats.py`, `server/ops.py`, `static/ops.js`, 이 문서 |
+| 운영 API의 집계 칸 | `server/visit_stats.py`, `server/admin.py`, `static/admin.js`, 이 문서 |
 | 실시간 음성(Gemini Live API)으로 전환 | 이 문서 전체를 새로 씁니다(역할 가이드 3장의 방식 비교 실험 결과에 따라 결정) |
