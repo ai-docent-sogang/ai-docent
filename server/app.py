@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import ask as ask_api
 from . import live as live_api
+from . import ops as ops_api
 from . import session as sessions
 from .content import load_artworks, load_comparisons
 from .gemini_client import ask_docent, make_client
@@ -49,6 +50,10 @@ app.include_router(ask_api.router)
 live_api.artworks = artworks
 live_api.comparisons = comparisons
 app.include_router(live_api.router)
+
+# 운영 페이지(/ops)와 집계·켜기/끄기 API. 같은 작품 목록을 쓴다.
+ops_api.artworks = artworks
+app.include_router(ops_api.router)
 
 
 @app.get("/")
