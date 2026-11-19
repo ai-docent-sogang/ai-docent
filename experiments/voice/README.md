@@ -1,6 +1,6 @@
 # 음성 실험 실행하기
 
-저장소 최상위에서 아래 명령을 실행한다. API 키는 최상위 `.env`의 `GEMINI_API_KEY`를 사용한다. Live API 호출에는 요금이 발생한다. 설치는 `uv sync --extra live`를 따른다.
+저장소 최상위에서 아래 명령을 실행한다. API 키는 최상위 `.env`의 `GEMINI_API_KEY`를 사용한다. Live API 호출에는 요금이 발생한다. 설치는 `uv sync`를 따른다(websockets는 11/17에 기본 의존성으로 옮겼다).
 
 ## 코드 찾기
 
