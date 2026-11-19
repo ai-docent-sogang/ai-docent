@@ -1,3 +1,4 @@
+
 """카메라 사진과 가장 비슷한 기준 이미지를 찾아 작품 후보를 고르는 파일 (개발계획서 5장 2안).
 
 담당: BE2
@@ -89,6 +90,35 @@ def open_for_model(path, size=512):
     return image.convert("RGB")
 
 
+def decide(hits, min_score=None, min_margin=None):
+    if not hits:
+        return "unknown", None, None
+    score = hits[0]["score"]
+    margin = score - hits[1]["score"] if len(hits) > 1 else None
+    if min_score is not None and (score < min_score or (margin is not None and margin < min_margin)):
+        return "unknown", score, margin
+    return hits[0]["artwork_id"], score, margin
+
+
+def nearest_box_index(point, boxes, image_size):
+    """Select a normalized box by pixel distance, breaking ties by input order."""
+    x, y = point
+    if not (0 <= x <= 1 and 0 <= y <= 1):
+        raise ValueError("point must use normalized coordinates")
+    width, height = image_size
+    for left, top, right, bottom in boxes:
+        if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+            raise ValueError("invalid normalized artwork box")
+    return min(
+        range(len(boxes)),
+        key=lambda i: (
+            (max(boxes[i][0] - x, 0, x - boxes[i][2]) * width) ** 2
+            + (max(boxes[i][1] - y, 0, y - boxes[i][3]) * height) ** 2
+        ),
+        default=None,
+    )
+
+
 class ReferenceIndex:
     """tools/build_index.py가 만든 index.npz를 읽어 후보를 찾는다."""
 
@@ -106,21 +136,47 @@ class ReferenceIndex:
         if self.embedder.model_id != self.info["model_id"]:
             raise ValueError("the query model differs from the model that built the index")
 
-    def search(self, image, k=3):
+    def search(self, image, k=3, allowed_ids=None):
         """사진과 가장 비슷한 작품 k개를 [{"artwork_id", "score", "image_file"}, ...]로 돌려준다.
 
         한 작품에 기준 이미지가 여러 장이면 그중 가장 높은 점수만 쓴다(같은 작품이 후보를 독차지하지 않게).
         """
+        if k < 1:
+            raise ValueError("k must be positive")
+        allowed = set(allowed_ids) if allowed_ids is not None else None
+        if allowed is not None and not allowed:
+            return []
         scores = self.vectors @ self.embedder.embed(image)
         best = {}
         for row in scores.argsort()[::-1]:
             artwork_id = self.artwork_ids[row]
+            if allowed is not None and artwork_id not in allowed:
+                continue
             if artwork_id not in best:
                 best[artwork_id] = {"artwork_id": artwork_id, "score": round(float(scores[row]), 4),
                                     "image_file": self.image_files[row]}
                 if len(best) == k:
                     break
         return list(best.values())
+
+    def recognize_pointed(self, image, point, boxes, *, allowed_ids, min_score, min_margin):
+        """Search the nearest normalized artwork box using calibrated thresholds."""
+        if not (-1 <= min_score <= 1 and 0 <= min_margin <= 2):
+            raise ValueError("invalid recognition thresholds")
+        width, height = image.size
+        boxes = list(boxes)
+        selected = nearest_box_index(point, boxes, image.size)
+        if selected is None:
+            return decide([])
+        box = boxes[selected]
+        left, top, right, bottom = box
+        from math import ceil, floor
+
+        pixels = (floor(left * width), floor(top * height),
+                  ceil(right * width), ceil(bottom * height))
+        with image.crop(pixels) as cropped:
+            hits = self.search(cropped, k=2, allowed_ids=allowed_ids)
+        return decide(hits, min_score, min_margin)
 
     def search_jpeg(self, jpeg_bytes, k=3):
         """서버가 받은 카메라 사진(JPEG 바이트)으로 검색한다. /api/turn에 연결할 때 쓸 함수."""
@@ -134,8 +190,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find the reference artworks most similar to a photo")
     parser.add_argument("photos", nargs="+")
     parser.add_argument("--k", type=int, default=3)
+    parser.add_argument("--index", type=Path, default=INDEX_PATH)
     args = parser.parse_args()
-    index = ReferenceIndex()
+    index = ReferenceIndex(args.index)
     titles = {}
     manifest = DOCENT_DIR / "data" / "reference" / "manifest.csv"
     if manifest.exists():
