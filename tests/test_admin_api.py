@@ -68,7 +68,7 @@ with tempfile.TemporaryDirectory() as tmp:
         row(0.0, "visit_start", start_bucket="2026-11-19T10:00", season_id="", gallery="",
             ui_lang="en", mode="handsfree", model="m", voice="Kore"),
         row(10.0, "artwork_identified", artwork_id=ARTWORK, via="function"),
-        row(20.0, "question", artwork_id=ARTWORK, channel="voice", label="artist",
+        row(20.0, "question", artwork_id=ARTWORK, channel="voice", grounded=True, label="artist",
             outcome="answered", first_audio_ms=1700),
         row(60.0, "visit_end", reason="visit_ended", duration_s=60, counts={"question": 1}),
     ])

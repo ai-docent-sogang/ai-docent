@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from .ask import build_artwork_context
 from . import session as sessions
 from .content import rank_comparisons
+from . import live_config
 from .live_config import UNKNOWN
 from .live_context import MAX_COMPARISON_OPTIONS, REGION_TAGS, comparison_block, home_of
 from .live_transcript import comparison_in_transcript
@@ -33,6 +34,12 @@ def ranked_comparison_ids(artwork_id, profile, used_ids, verified_comparisons):
     ranked = rank_comparisons(list(verified_comparisons.values()), artwork_id, ranking_profile,
                               set(used_ids))[:MAX_COMPARISON_OPTIONS]
     return [c["comparison_id"] for c in ranked]
+
+
+def artwork_card(art):
+    """작품 사실 없이 누구인지만 알려 주는 카드. per_question에서 사실은 lookup_facts로만 나간다."""
+    return (f"ARTWORK: {art['title_en']}\nArtist: {art['artist']}\nDate: {art['date']}\n"
+            "Facts are not included. Call lookup_facts when the visitor asks about it.")
 
 
 class LiveConversation:
@@ -69,6 +76,8 @@ class LiveConversation:
                  "opening_turn": False,
                  # 이번 턴에 report_question이 보고한 질문 유형과 답변 결과
                  "label": "", "outcome": "",
+                 # 이번 턴에 작품 사실을 실제로 조회했는가. 질문 여부의 기준이다(lookup_facts).
+                 "grounded": False,
                  # 질문/첫 음성 시각과 채널, 현재 연결의 누적 사용량을 추적한다.
                  "heard_at": None, "first_audio_at": None, "channel": "", "usage": None,
                  "usage_seen": {}, "speech_end_at": None}
@@ -111,6 +120,7 @@ class LiveConversation:
         if not said:
             # 말이 없는 턴에도 보고는 올 수 있다. 비우지 않으면 다음 질문에 그 라벨이 붙는다.
             self.state["label"] = self.state["outcome"] = ""
+            self.state["grounded"] = False
             return
         if (self.mode == "handsfree" and not self.state["comparison_called"]
                 and self.state["artwork_id"] in self.artworks):
@@ -126,15 +136,17 @@ class LiveConversation:
                                 via="transcript")
         self.visit.record_turn(self.state["heard"].strip(), SimpleNamespace(
             artwork_id=self.state["artwork_id"], comparison_id=self.state["comparison_id"], reply=said))
-        # 인사 턴은 질문으로 세지 않는다. 라벨·결과는 Live가 report_question으로 보고한 값만 쓰고
-        # 답변 글에서 추론하지 않는다(docs/FE1/관람기록_설계.md). 보고가 없으면 unknown이다.
+        # 말을 한 턴은 모두 기록하되, 사실을 조회한 턴만 grounded=True다. 질문 수는 그 턴만 센다.
+        # 라벨·결과는 Live가 보고한 값만 쓰고 답변 글에서 추론하지 않는다(docs/FE1/관람기록_설계.md).
         if self.state["heard"].strip():
             self.vlog.event("question", artwork_id=self.state["artwork_id"],
                             channel=self.state["channel"] or "voice",
                             label=self.state["label"] or "unknown",
                             outcome=self.state["outcome"] or "unknown",
+                            grounded=self.state["grounded"],
                             first_audio_ms=self.first_audio_ms())
         self.state["label"] = self.state["outcome"] = ""
+        self.state["grounded"] = False
         self.state["heard"] = self.state["said"] = self.state["comparison_id"] = ""
         self.state["comparison_called"] = False
         self.state["heard_at"] = self.state["first_audio_at"] = self.state["speech_end_at"] = None
@@ -164,7 +176,8 @@ class LiveConversation:
                 "artist": found.get("artist", "")}))
             return {
                 "artwork_id": artwork_id,
-                "artwork": build_artwork_context(found),
+                "artwork": (artwork_card(found) if live_config.LIVE_FACTS == "per_question"
+                            else build_artwork_context(found)),
                 "comparison_options": comparison_block(self.comparisons, artwork_id, self.profile, used),
                 # comparison_options와 같은 순서. report_comparison에 넣을 값이다.
                 "comparison_ids": ranked_comparison_ids(
@@ -193,10 +206,19 @@ class LiveConversation:
                                         f"({pair['foreign_date']}, {pair['foreign_collection']})",
                     "angle": pair["angle"], "similarities": pair["similarities"],
                     "differences": pair["differences"]}
-        if call.name == "report_question":
+        if call.name in ("lookup_facts", "report_question"):
             # 관람객이 무엇을 물었는지만 기록한다. 질문 원문은 어디에도 남기지 않는다.
             self.state["label"] = normalize_label(args.get("label"))
             self.state["outcome"] = normalize_outcome(args.get("outcome"))
-            return {"ok": True}
+            if call.name == "report_question":
+                self.state["grounded"] = True    # per_artwork: 사실은 이미 줬고, 보고가 질문의 표시다
+                return {"ok": True}
+            found = self.artworks.get(self.state["artwork_id"])
+            if found is None:
+                # 작품이 아직 인식되지 않았다. 사실을 줄 수 없으므로 조회로 세지 않는다.
+                return {"ok": False, "error": "No artwork is identified yet. Do not answer about any "
+                                              "painting. Look at the camera and call report_current_artwork."}
+            self.state["grounded"] = True
+            return {"ok": True, "facts": build_artwork_context(found)}
         return {"ok": False, "error": f"unknown function {call.name}"}
 

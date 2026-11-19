@@ -142,7 +142,7 @@ def summarize(visits: dict[str, list[dict]]) -> dict:
     per: dict[str, dict] = {}
     totals = {"questions": 0, "labels": {label: 0 for label in LABELS},
               "groups": {group: 0 for group in GROUPS}, "outcomes": {name: 0 for name in OUTCOMES},
-              "questions_unassigned": 0, "questions_without_report": 0, "artwork_unknown": 0}
+              "speech_turns": 0, "questions_unassigned": 0, "artwork_unknown": 0}
     transitions: dict[tuple[str, str], int] = {}
     sequences, durations, first_audio, unmeasured = [], [], [], 0
     quality: dict[str, int] = {}
@@ -153,6 +153,7 @@ def summarize(visits: dict[str, list[dict]]) -> dict:
         return per.setdefault(artwork_id, {
             "artwork_id": artwork_id, "visits_with_dwell": 0, "identifies": 0, "dwells": 0,
             "revisit_dwells": 0, "open_ended_dwells": 0, "recognized_s": [], "questions": 0,
+            "speech_turns": 0,
             "labels": {label: 0 for label in LABELS}, "groups": {group: 0 for group in GROUPS},
             "outcomes": {name: 0 for name in OUTCOMES}, "comparisons": 0,
             "tokens": {"input_audio": 0, "input_image": 0, "input_text": 0, "output_audio": 0,
@@ -186,7 +187,14 @@ def summarize(visits: dict[str, list[dict]]) -> dict:
             elif event == "artwork_unknown":
                 totals["artwork_unknown"] += 1
             elif event == "question":
+                # 말이 있었던 모든 턴은 speech_turns, 사실을 조회한 턴만 questions다(grounded).
+                # grounded 칸이 없는 옛 기록은 질문으로 세지 않는다. 판별할 수 없기 때문이다.
                 artwork_id = row.get("artwork_id") or ""
+                entry = slot(artwork_id)
+                totals["speech_turns"] += 1
+                entry["speech_turns"] += 1
+                if row.get("grounded") is not True:
+                    continue
                 label = row.get("label") if row.get("label") in LABELS else "unknown"
                 outcome = row.get("outcome") if row.get("outcome") in OUTCOMES else "unknown"
                 totals["questions"] += 1
@@ -195,10 +203,6 @@ def summarize(visits: dict[str, list[dict]]) -> dict:
                 totals["outcomes"][outcome] += 1
                 if not artwork_id:
                     totals["questions_unassigned"] += 1
-                if label == "unknown" and outcome == "unknown":
-                    # 보고가 아예 없었던 질문으로 추정한다. 진짜 unknown과 완전히 구별되지는 않는다.
-                    totals["questions_without_report"] += 1
-                entry = slot(artwork_id)
                 entry["questions"] += 1
                 entry["labels"][label] += 1
                 entry["groups"][group_of(label)] += 1

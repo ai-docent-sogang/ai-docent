@@ -35,7 +35,7 @@ ALLOWED: dict[str, set[str]] = {
     "visit_start": {"start_bucket", "season_id", "gallery", "ui_lang", "mode", "model", "voice"},
     "artwork_identified": {"artwork_id", "via"},
     "artwork_unknown": {"via"},
-    "question": {"artwork_id", "channel", "label", "outcome", "first_audio_ms"},
+    "question": {"artwork_id", "channel", "label", "outcome", "grounded", "first_audio_ms"},
     "comparison": {"artwork_id", "comparison_id", "via"},
     "quality": {"issue", "kept_conversation"},
     # 작품별 사용량을 집계한다. 인사 등 작품이 정해지지 않은 턴은 작품 ID를 비운다.

@@ -113,7 +113,7 @@ if (typeof document !== "undefined") {
       <p>관람 ${v.total}건 (종료 기록 있음 ${v.ended}건, 없음 ${v.no_visit_end}건) ·
          관람 길이 중앙값 ${seconds(v.duration_s.median)}</p>
       <p>질문 ${stats.totals.questions}건 · 인식 실패 ${stats.totals.artwork_unknown}건 ·
-         보고 없던 질문 ${stats.totals.questions_without_report}건 ·
+         질문 비율 ${ratio(stats.totals.questions, stats.totals.speech_turns)} (조회한 턴 / 말한 턴) ·
          작품 미정 질문 ${stats.totals.questions_unassigned}건</p>
       <p>첫 소리까지 중앙값 ${stats.first_audio_ms.median ?? "N/A"}ms
          (p90 ${stats.first_audio_ms.p90 ?? "N/A"}ms, 못 잰 것 ${stats.first_audio_ms.unmeasured}건)</p>

@@ -20,7 +20,7 @@ import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는
 
 import server.session as sessions  # noqa: E402
 from server import live as relay  # noqa: E402
-from server import visit_log  # noqa: E402
+from server import live_config, visit_log  # noqa: E402
 from server.live_conversation import LiveConversation  # noqa: E402
 
 PASS = FAIL = 0
@@ -61,7 +61,7 @@ def call(conversation, name, **args):
 print("\n1. 보고한 라벨이 그 턴의 질문에 붙는다")
 with tempfile.TemporaryDirectory() as tmp:
     c = talk(tmp)
-    call(c, "report_question", label="artist", outcome="answered")
+    call(c, "lookup_facts", label="artist", outcome="answered")
     c.state["heard"], c.state["said"] = "Who painted this?", "Kim Hong-do did."
     c.remember_turn()
     rows = questions(tmp)
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory() as tmp:
 print("\n2. 말이 없는 턴의 보고는 다음 질문으로 새지 않는다")
 with tempfile.TemporaryDirectory() as tmp:
     c = talk(tmp)
-    call(c, "report_question", label="meaning", outcome="answered")
+    call(c, "lookup_facts", label="meaning", outcome="answered")
     c.state["heard"], c.state["said"] = "mm-hmm", ""      # 모델이 아무 말도 하지 않은 턴
     c.remember_turn()
     check("말이 없으면 질문으로 세지 않는다", len(questions(tmp)) == 0, str(len(questions(tmp))))
@@ -94,12 +94,62 @@ with tempfile.TemporaryDirectory() as tmp:
 print("\n4. 목록 밖 값과 대소문자는 다듬어진다")
 with tempfile.TemporaryDirectory() as tmp:
     c = talk(tmp)
-    call(c, "report_question", label=" FACT ", outcome="nope")
+    call(c, "lookup_facts", label=" FACT ", outcome="nope")
     c.state["heard"], c.state["said"] = "When?", "1805."
     c.remember_turn()
     rows = questions(tmp)
     check("대소문자와 공백을 다듬는다", rows and rows[0]["label"] == "fact", str(rows and rows[0]["label"]))
     check("목록 밖 결과는 unknown", rows and rows[0]["outcome"] == "unknown")
+
+
+def result(conversation, name, **args):
+    return conversation.answer_tool_call(type("C", (), {"name": name, "args": args})())
+
+
+print("\n5. 조회한 턴만 grounded다")
+with tempfile.TemporaryDirectory() as tmp:
+    c = talk(tmp)
+    got = result(c, "lookup_facts", label="fact")
+    check("조회가 작품 사실을 돌려준다", got.get("ok") and "FACTS" in got["facts"], str(got)[:80])
+    c.state["heard"], c.state["said"] = "When?", "1805."
+    c.remember_turn()
+    c.state["heard"], c.state["said"] = "Ha ha, nice.", "Glad you like it."
+    c.remember_turn()
+    rows = questions(tmp)
+    check("조회한 턴은 grounded=True", rows[0]["grounded"] is True, str(rows[0]))
+    check("조회하지 않은 턴은 grounded=False", rows[1]["grounded"] is False, str(rows[1]))
+
+print("\n6. 작품을 모르면 사실을 주지 않고 조회로 세지 않는다")
+with tempfile.TemporaryDirectory() as tmp:
+    c = talk(tmp)
+    c.state["artwork_id"] = ""
+    got = result(c, "lookup_facts", label="fact")
+    check("사실 대신 안내를 돌려준다", got.get("ok") is False and "facts" not in got, str(got)[:80])
+    check("grounded를 세우지 않는다", c.state["grounded"] is False)
+
+print("\n7. 작품 보고는 사실을 싣지 않는다(per_question)")
+with tempfile.TemporaryDirectory() as tmp:
+    c = talk(tmp)
+    got = result(c, "report_current_artwork", artwork_id=ARTWORK)
+    check("카드에 FACTS가 없다", "FACTS" not in got["artwork"], got["artwork"][:60])
+
+print("\n8. LIVE_FACTS=per_artwork이면 예전 방식으로 돌아간다")
+live_config.LIVE_FACTS = "per_artwork"
+try:
+    with tempfile.TemporaryDirectory() as tmp:
+        c = talk(tmp)
+        got = result(c, "report_current_artwork", artwork_id=ARTWORK)
+        check("작품 보고에 FACTS가 실린다", "FACTS" in got["artwork"])
+        result(c, "report_question", label="fact", outcome="answered")
+        c.state["heard"], c.state["said"] = "When?", "1805."
+        c.remember_turn()
+        rows = questions(tmp)
+        check("report_question이 grounded 표시가 된다", rows and rows[0]["grounded"] is True)
+        names = [f.name for t in live_config.handsfree_tools(relay.artworks, {})
+                 for f in t.function_declarations]
+        check("도구 선언이 report_question이다", names[-1] == "report_question", str(names))
+finally:
+    live_config.LIVE_FACTS = "per_question"
 
 print(f"\n질문 턴 시험: 통과 {PASS}건, 실패 {FAIL}건")
 if FAIL:

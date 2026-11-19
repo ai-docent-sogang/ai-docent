@@ -351,11 +351,11 @@ check("작품 없이도 연결된다(ready)", got[0].get("type") == "ready" and 
 check("자동 음성 감지를 켠다", aad is not None and aad.disabled is False, str(aad))
 names = [f.name for t in cfg.tools for f in t.function_declarations]
 check("함수 세 개를 선언한다",
-      names == ["report_current_artwork", "report_comparison", "report_question"], str(names))
+      names == ["report_current_artwork", "report_comparison", "lookup_facts"], str(names))
 q_props = cfg.tools[0].function_declarations[2].parameters.properties
-check("질문 함수는 라벨 10개와 결과 4개만 받는다",
-      list(q_props["label"].enum) == list(question_labels.LABELS)
-      and list(q_props["outcome"].enum) == list(question_labels.OUTCOMES), str(list(q_props)))
+check("조회 함수는 라벨 9개와 결과 3개만 받는다(unknown은 모델이 고르는 값이 아니다)",
+      list(q_props["label"].enum) == list(question_labels.MODEL_LABELS)
+      and list(q_props["outcome"].enum) == list(question_labels.MODEL_OUTCOMES), str(list(q_props)))
 enum = cfg.tools[0].function_declarations[0].parameters.properties["artwork_id"].enum
 check("작품 함수 값은 11개 ID + unknown", len(enum) == 12 and "unknown" in enum and ARTWORK in enum, str(enum))
 check("압축·재개 설정을 그대로 쓴다(영상이 섞이면 압축 없이 2분)",
@@ -415,7 +415,8 @@ check("함수마다 결과를 돌려준다(id·이름 일치)",
                                               ("call-0", "report_comparison"), ("call-0", "report_comparison")],
       str([(r.id, r.name) for r in responses]))
 art_result = responses[0].response
-check("작품 결과에 확인된 사실이 들어간다", "FACTS (the only facts you may use)" in art_result["artwork"])
+check("작품 결과에는 사실이 없다(조회는 lookup_facts로만 나간다)",
+      "FACTS (the only facts you may use)" not in art_result["artwork"], art_result["artwork"][:60])
 check("작품 결과에 비교 후보와 그 ID가 들어간다",
       "COMPARISON OPTIONS" in art_result["comparison_options"]
       # ID를 여기 적어 두지 않는다. 예원님이 비교쌍을 늘리면 이 시험만 깨지고, 깨진 사람은
@@ -824,7 +825,7 @@ saved_config = (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY,
     "gemini-3.8-live", "Kore", "every", "LOW", 700, 300, 30.0)
 check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
       settings.env_summary_line() == "[live] model=gemini-3.8-live voice=Kore frame_policy=every "
-      "start=LOW silence=700ms prefix=300ms idle=30s", settings.env_summary_line())
+      "start=LOW silence=700ms prefix=300ms idle=30s facts=per_question", settings.env_summary_line())
 (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY, settings.LIVE_START_SENSITIVITY,
  settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS, settings.PHONE_IDLE_S) = saved_config
 
@@ -883,7 +884,7 @@ def visit_log_run(**envs):
             [msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])],
             [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
             # 대문자·공백이 섞인 값을 보내 정규화까지 함께 본다
-            [msg(calls=[("report_question", {"label": " Artist ", "outcome": "answered"})])],
+            [msg(calls=[("lookup_facts", {"label": " Artist ", "outcome": "answered"})])],
             [msg(heard="Who painted this and when?"), msg(audio=b"\x01"),
              msg(said="Kim Hong-do painted it in the late eighteenth century."),
              msg(usage=FakeUsage(2522)), msg(interrupted=True), msg(turn_complete=True)],
@@ -925,6 +926,8 @@ check("질문 한 번이 남는다", question is not None and question["artwork_
 check("Live가 보고한 라벨과 결과가 남는다(대문자·공백은 정규화된다)",
       question is not None and question["label"] == "artist"
       and question["outcome"] == "answered", str(question))
+check("사실을 조회한 턴은 grounded=True로 남는다",
+      question is not None and question.get("grounded") is True, str(question))
 check("첫 음성까지 걸린 시간을 잰다(못 재면 -1)",
       question is not None and isinstance(question["first_audio_ms"], int), str(question))
 check("시즌·전시실이 들어간다",

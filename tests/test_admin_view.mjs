@@ -36,7 +36,7 @@ function stats() {
                               navigation: 1, request: 1 },
       groups: { interest: 3, control: 2, unclassified: 0 },
       outcomes: { answered: 4, no_source: 1, out_of_scope: 0, unknown: 0 },
-      questions_unassigned: 0, questions_without_report: 0, artwork_unknown: 2,
+      questions_unassigned: 0, speech_turns: 0, artwork_unknown: 2,
     },
     transitions: [{ from: "KHD_SSIREUM", to: "JS_INWANG", count: 1 }],
     sequences: [{ visit: "3f2a9c01", path: ["KHD_SSIREUM", "JS_INWANG"] }],

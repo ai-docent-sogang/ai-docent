@@ -49,9 +49,9 @@ def started(visit_id, bucket, **fields):
                ui_lang="en", mode="handsfree", model="m", voice="Kore", **fields)
 
 
-def question(visit_id, t, artwork_id, label, outcome="answered", first_audio_ms=1800):
+def question(visit_id, t, artwork_id, label, outcome="answered", first_audio_ms=1800, grounded=True):
     return row(visit_id, t, "question", artwork_id=artwork_id, channel="voice", label=label,
-               outcome=outcome, first_audio_ms=first_audio_ms)
+               outcome=outcome, grounded=grounded, first_audio_ms=first_audio_ms)
 
 
 print("\n1. 자정을 넘긴 관람 하나를 두 파일에서 모아 한 건으로 센다")
@@ -134,7 +134,7 @@ with tempfile.TemporaryDirectory() as tmp:
         started("v1", "2026-11-19T10:00"),
         question("v1", 20.0, "A", "fact"),
         started("v2", "2026-11-19T11:00", source_kind="mock"),
-        row("v2", 5.0, "question", source_kind="mock", artwork_id="A", channel="voice",
+        row("v2", 5.0, "question", source_kind="mock", artwork_id="A", channel="voice", grounded=True,
             label="fact", outcome="answered", first_audio_ms=100),
     ])
     real = visit_stats.collect("2026-11-19", "2026-11-19", "team_rehearsal", folder=Path(tmp))
@@ -169,8 +169,7 @@ with tempfile.TemporaryDirectory() as tmp:
           str(only["labels"]))
     check("덩이 합이 질문 수와 같다", sum(only["groups"].values()) == only["questions"] == 6,
           str(only["groups"]))
-    check("보고가 없던 질문을 따로 센다", out["totals"]["questions_without_report"] == 1,
-          str(out["totals"]["questions_without_report"]))
+    check("옛 기록의 questions_without_report는 더 없다", "questions_without_report" not in out["totals"])
     check("재지 못한 응답 시간을 평균에서 뺀다",
           out["first_audio_ms"]["n"] == 5 and out["first_audio_ms"]["unmeasured"] == 1,
           str(out["first_audio_ms"]))
@@ -217,6 +216,25 @@ with tempfile.TemporaryDirectory() as tmp:
             check(name, True, str(exc)[:60])
         else:
             check(name, False, "거부하지 않았다")
+
+
+print("\n11. 사실을 조회한 턴만 질문으로 센다")
+with tempfile.TemporaryDirectory() as tmp:
+    write(tmp, "20261119", [
+        started("v1", "2026-11-19T10:00"),
+        row("v1", 5.0, "artwork_identified", artwork_id="A", via="function"),
+        question("v1", 10.0, "A", "fact"),
+        question("v1", 20.0, "A", "unknown", outcome="unknown", grounded=False, first_audio_ms=700),
+        row("v1", 30.0, "question", artwork_id="A", channel="voice", label="fact",
+            outcome="answered", first_audio_ms=900),   # grounded 칸이 없는 옛 기록
+    ])
+    out = visit_stats.collect("2026-11-19", "2026-11-19", "team_rehearsal", folder=Path(tmp))
+    check("말한 턴은 셋이다", out["totals"]["speech_turns"] == 3, str(out["totals"]))
+    check("질문은 조회한 한 건뿐이다(칸이 없는 옛 기록은 세지 않는다)",
+          out["totals"]["questions"] == 1 and out["artworks"][0]["questions"] == 1, str(out["totals"]))
+    check("조회하지 않은 턴의 라벨은 집계에 들어가지 않는다", out["totals"]["labels"]["unknown"] == 0)
+    check("응답 시간도 조회한 턴만 잰다", out["first_audio_ms"]["n"] == 1, str(out["first_audio_ms"]))
+
 
 print(f"\n관람 집계 시험: 통과 {PASS}건, 실패 {FAIL}건")
 if FAIL:

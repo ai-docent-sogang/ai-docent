@@ -25,10 +25,23 @@ unknown: not a question, unintelligible, or impossible to classify."""
 
 OUTCOMES = ("answered", "no_source", "out_of_scope", "unknown")
 
-OUTCOME_GUIDE = """answered: you answered using the FACTS returned by report_current_artwork.
+OUTCOME_GUIDE = """answered: you answered from the verified facts you were given.
 no_source: the question was about this exhibition but the verified facts did not hold the answer, so you said you do not have it.
 out_of_scope: the question was not about this exhibition or its artworks.
 unknown: you could not tell which of the above applies."""
+
+# 모델에게는 unknown을 주지 않는다. 보고가 없는 턴이 unknown이고, 모델이 스스로 고를 값이 아니다.
+MODEL_LABELS = tuple(label for label in LABELS if label != "unknown")
+MODEL_OUTCOMES = tuple(name for name in OUTCOMES if name != "unknown")
+
+
+def _guide_for(guide: str, allowed: tuple[str, ...]) -> str:
+    """설명문에서 `allowed`에 있는 값의 줄만 남긴다. 목록과 설명이 어긋나지 않게 한다."""
+    return "\n".join(line for line in guide.splitlines() if line.split(":", 1)[0] in allowed)
+
+
+MODEL_LABEL_GUIDE = _guide_for(LABEL_GUIDE, MODEL_LABELS)
+MODEL_OUTCOME_GUIDE = _guide_for(OUTCOME_GUIDE, MODEL_OUTCOMES)
 
 # 대시보드는 10개를 그대로 늘어놓지 않고 세 덩이로 모아 보여 준다. 원라벨은 기록과 별도 탭에 남는다.
 # interest만 작품별 관심 분포의 분모가 된다. 앱 조작 질문은 작품에 대한 궁금증이 아니다.
