@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import math
 import statistics
 from datetime import date, timedelta
 from pathlib import Path
@@ -129,10 +130,11 @@ def _numbers(values: list[float]) -> dict:
 
 
 def _p90(values: list[int]) -> int | None:
+    """최근접 순위 p90. 표본이 10의 배수일 때 한 칸 높게 집던 버그를 고쳤다(11/19)."""
     if not values:
         return None
     ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(len(ordered) * 0.9))]
+    return ordered[math.ceil(0.9 * len(ordered)) - 1]
 
 
 def summarize(visits: dict[str, list[dict]]) -> dict:

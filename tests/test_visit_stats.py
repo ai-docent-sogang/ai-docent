@@ -14,6 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
+
 from server import visit_stats  # noqa: E402
 
 PASS = FAIL = 0
@@ -197,6 +199,12 @@ with tempfile.TemporaryDirectory() as tmp:
     visit_stats.collect("2026-11-19", "2026-11-19", "team_rehearsal", folder=Path(tmp))
     check("아주 오래된 파일도 지우지 않는다", old.exists() and new.exists(),
           str(sorted(p.name for p in Path(tmp).iterdir())))
+
+print("\n8-2. p90은 최근접 순위다 (10의 배수에서 최댓값을 집지 않는다)")
+for size, want in ((1, 1), (10, 9), (20, 18), (30, 27), (100, 90)):
+    got = visit_stats._p90(list(range(1, size + 1)))
+    check(f"표본 {size}의 p90은 {want}번째 값", got == want, f"{got}")
+check("빈 표본은 None", visit_stats._p90([]) is None)
 
 print("\n9. 잘못된 입력은 거부한다")
 with tempfile.TemporaryDirectory() as tmp:
