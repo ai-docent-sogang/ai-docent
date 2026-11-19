@@ -44,9 +44,11 @@ class LiveConversation:
         self.artworks = artworks
         self.comparisons = comparisons
         # app.py가 주입한 목록에서 한 번만 거른다. 도구 선언·함수 결과·화면이 함께 쓴다.
+        # artworks는 켜진 작품만 담겨 오므로(server/on_view.py) 끈 작품의 비교쌍도 함께 빠진다.
         self.verified_comparisons = {
             c["comparison_id"]: c for c in comparisons
-            if c.get("verification_status", "").strip().lower() == "verified"}
+            if c.get("verification_status", "").strip().lower() == "verified"
+            and c.get("artwork_id") in self.artworks}
         self.resume_store = resume_store
         self.vlog = vlog
         # 느린 폰 전송이 Gemini 읽기를 막지 않게 소켓 중계가 이 큐를 따로 비운다.

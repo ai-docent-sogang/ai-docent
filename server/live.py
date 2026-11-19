@@ -26,6 +26,7 @@ from .ask import build_artwork_context
 from .content import load_artworks, load_comparisons
 from .gemini_client import make_client
 from . import live_config as settings
+from . import on_view
 from . import visit_log
 from .live_conversation import LiveConversation
 from .live_transcript import feed_said, flush_said
@@ -134,7 +135,10 @@ async def live(ws: WebSocket):
     # profile과 session_id는 없어도 된다(시험 페이지는 artwork_id만 보낸다).
     first = json.loads(await ws.receive_text())
     mode = "handsfree" if first.get("mode") == "handsfree" else "push"
-    art = artworks.get(first.get("artwork_id"))
+    # 운영 페이지에서 끈 작품을 여기서 한 번 뺀다. 연결마다 다시 거르므로 모듈 수준 목록이
+    # app.py가 주입한 것이든 이 파일이 스스로 읽은 것이든 필터가 새지 않는다.
+    visible = on_view.visible(artworks)
+    art = visible.get(first.get("artwork_id"))
     if art is None and mode == "push":
         await ws.send_text(json.dumps({"type": "error", "message": "unknown artwork"}))
         await ws.close()
@@ -153,21 +157,21 @@ async def live(ws: WebSocket):
     # 다시 붙는 폰이면 저장해 둔 재개 핸들과 작품을 이어받는다.
     want_resume = first.get("resume") is True
     saved = saved_resume(sid) if want_resume else None
-    if mode == "handsfree" and art is None and saved and saved.get("artwork_id") in artworks:
+    if mode == "handsfree" and art is None and saved and saved.get("artwork_id") in visible:
         art_from_resume = saved["artwork_id"]
     else:
         art_from_resume = ""
 
     conversation = LiveConversation(
         mode=mode, artwork_id=art["artwork_id"] if art else art_from_resume,
-        profile=profile, visit=visit, artworks=artworks, comparisons=comparisons,
+        profile=profile, visit=visit, artworks=visible, comparisons=comparisons,
         resume_store=resume_store, vlog=vlog, saved=saved)
     state = conversation.state
     to_browser = conversation.to_browser
     if mode == "push":
         config = settings.live_config(art, profile, tuple(visit.used_comparison_ids), comparisons)
     else:
-        config = settings.handsfree_config(profile, artworks, conversation.verified_comparisons)
+        config = settings.handsfree_config(profile, visible, conversation.verified_comparisons)
     client = make_client()
 
     # 설정과 클라이언트 생성에 성공한 뒤 등록한다. 같은 관람의 이전 연결은 닫는다.
