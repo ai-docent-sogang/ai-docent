@@ -102,6 +102,37 @@ async function startLive(conversation, session) {
     return false;
   }
 }
+// 카메라·마이크는 보안 컨텍스트에서만 열린다(https, 또는 http://localhost). 폰에서
+// http://<노트북 IP>로 열면 navigator.mediaDevices 자체가 없어서 "reading 'getUserMedia'"만
+// 보이고 원인을 알 수 없다. 그래서 (1) 첫 화면에서 미리 알리고 (2) 열 때 원인을 말한다.
+// index.html은 고치지 않으려고 선택자로 안내 문구를 찾는다.
+const MIC_BLOCKED = "this page is not on HTTPS, so the camera and microphone are blocked. "
+  + "Open the https:// address, or http://localhost on this computer.";
+
+function micAvailable() {
+  return Boolean(globalThis.navigator?.mediaDevices?.getUserMedia);
+}
+
+function cameraAndMic(constraints) {
+  if (!micAvailable()) throw new Error(MIC_BLOCKED);
+  return navigator.mediaDevices.getUserMedia(constraints);
+}
+
+function warnIfMicBlocked() {
+  if (micAvailable()) return;
+  const note = document.querySelector(".prep-note");
+  if (note) {
+    const label = note.querySelector("strong");
+    const text = note.querySelector("span");
+    if (label) label.textContent = "THIS PAGE IS NOT ON HTTPS";
+    if (text) text.textContent = "Camera and microphone are blocked. Open the https:// address, "
+      + "or http://localhost on this computer.";
+  }
+  console.warn("mic blocked:", MIC_BLOCKED);
+}
+
+warnIfMicBlocked();
+
 // 새로고침 뒤 "Tap to continue your visit"(사용자 동작 안). /api/session을 새로 만들지 않고 저장된 관람을 잇는다.
 async function continueVisit() {
   const saved = savedVisit;
@@ -114,7 +145,7 @@ async function continueVisit() {
     const { ready } = await continueSavedVisit({
       saved, conversation, store: visitStore,
       getMedia: async () => {
-        stream = await navigator.mediaDevices.getUserMedia({
+        stream = await cameraAndMic({
           video: { facingMode: "environment", width: { ideal: 1280 } },
           audio: { echoCancellation: true, noiseSuppression: true },
         });
@@ -290,7 +321,7 @@ $("onboarding-form").addEventListener("submit",async event=>{
   // Local UI selection does not yet go to Gemini. Do not pretend profile sync succeeded.
   try{
     await initAudio();
-    stream=await navigator.mediaDevices.getUserMedia({
+    stream=await cameraAndMic({
       video:{facingMode:"environment",width:{ideal:1280}},
       audio:{echoCancellation:true,noiseSuppression:true},
     });
