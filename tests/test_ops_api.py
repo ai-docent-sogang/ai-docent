@@ -131,6 +131,19 @@ with TestClient(server_app) as client:
     back = client.post(f"/api/ops/artworks/{ARTWORK}/on_view", json={"on_view": True}).json()
     check("다시 켜면 꺼진 목록이 빈다", back["off"] == [], str(back["off"]))
 
+print("\n6. 운영 화면과 그 스크립트를 내려 준다")
+with TestClient(server_app) as client:
+    page = client.get("/ops")
+    check("/ops가 200으로 화면을 준다", page.status_code == 200, str(page.status_code))
+    check("관람객 화면이 아니라고 적혀 있다", "운영자용 화면" in page.text)
+    check("ops.js를 모듈로 불러온다", 'type="module" src="/static/ops.js"' in page.text)
+    # 주석에 파일 이름이 나오므로 불러오는 태그가 있는지로 본다
+    check("관람객 style.css를 불러오지 않는다", 'href="/static/style.css"' not in page.text)
+    script = client.get("/static/ops.js")
+    check("/static/ops.js를 200으로 준다", script.status_code == 200, str(script.status_code))
+    check("세 탭이 화면에 있다",
+          all(key in page.text for key in ("tab-dashboard", "tab-labels", "tab-onview")))
+
 on_view.OFF.clear()   # 다른 시험을 오염시키지 않는다
 print(f"\n운영 API 시험: 통과 {PASS}건, 실패 {FAIL}건")
 if FAIL:

@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- 운영 화면. 담당: FE1. 관람객 화면이 아니다(관람객 화면은 index.html, FE2).
+     동작은 ops.js, API는 server/ops.py, 형식은 docs/api.md의 "운영 API" 절.
+     style.css를 쓰지 않는다. 운영 화면과 관람객 화면의 모양을 섞지 않기 위함이다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 도슨트 운영</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #14171a; color: #eceff1;
+                 font: 15px/1.6 -apple-system, system-ui, sans-serif; }
+    main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 18px; margin: 0 0 2px; }
+    h2 { font-size: 14px; color: #90a4ae; font-weight: normal; margin: 18px 0 6px; }
+    p { margin: 2px 0; }
+    .note { color: #78909c; font-size: 13px; }
+    .warn { color: #ffb74d; font-size: 13px; }
+    nav { display: flex; gap: 6px; margin: 12px 0; flex-wrap: wrap; }
+    nav button { padding: 8px 14px; border: 1px solid #37474f; border-radius: 10px;
+                 background: #1c2227; color: inherit; font-size: 14px; }
+    nav button.on { background: #37474f; border-color: #607d8b; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    input, select, button { font: inherit; border-radius: 8px; border: 1px solid #37474f;
+                            background: #1c2227; color: inherit; padding: 6px 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 6px; }
+    th, td { border-bottom: 1px solid #263238; padding: 5px 6px; text-align: left;
+             white-space: nowrap; }
+    th { color: #90a4ae; font-weight: normal; }
+    td small { color: #78909c; }
+    .wrap { overflow-x: auto; }
+    #status { color: #80cbc4; font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>AI 도슨트 운영</h1>
+  <p class="note">운영자용 화면입니다. 인증이 없으므로 공개 주소로 서버를 열 때는 쓰지 않습니다.</p>
+
+  <nav>
+    <button id="nav-dashboard" type="button">대시보드</button>
+    <button id="nav-labels" type="button">질문 라벨</button>
+    <button id="nav-onview" type="button">작품 켜기/끄기</button>
+  </nav>
+
+  <div class="controls">
+    <label>기간 <input id="from" type="date"></label>
+    <label>– <input id="to" type="date"></label>
+    <label>자료
+      <select id="kind">
+        <option value="team_rehearsal">team_rehearsal</option>
+        <option value="team_shoot">team_shoot</option>
+        <option value="mock">mock</option>
+        <option value="visitor">visitor</option>
+      </select>
+    </label>
+    <button id="reload" type="button">다시 불러오기</button>
+    <span id="status"></span>
+  </div>
+  <p class="note">자료 종류는 한 번에 하나만 봅니다. 모의와 실측을 합산하지 않기로 11/16에 정했습니다.</p>
+
+  <section id="tab-dashboard">
+    <h2>요약</h2>
+    <div id="summary"></div>
+    <h2>작품별</h2>
+    <div class="wrap">
+      <table>
+        <thead><tr>
+          <th>작품</th><th>제목</th><th>인식 보고</th><th>구간</th><th>재방문</th>
+          <th>인식 구간(체류 아님)</th><th>질문</th><th>작품 관심</th><th>근거 없음</th>
+          <th>비교</th><th>토큰</th>
+        </tr></thead>
+        <tbody id="artworks"></tbody>
+      </table>
+    </div>
+    <h2>그 밖</h2>
+    <div id="extras"></div>
+  </section>
+
+  <section id="tab-labels" hidden>
+    <h2>덩이별 질문</h2>
+    <div id="groups"></div>
+    <h2>원라벨 10개 × 작품</h2>
+    <p class="note">기록에는 원라벨이 그대로 남습니다. 대시보드는 세 덩이로 모아 보여 줍니다.</p>
+    <div class="wrap">
+      <table>
+        <thead id="label-head"></thead>
+        <tbody id="label-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-onview" hidden>
+    <h2>작품 켜기/끄기</h2>
+    <p class="warn" id="onview-note"></p>
+    <p class="note">끈 작품은 도슨트가 알아보지 못하고 그 작품의 비교쌍도 빠집니다.
+       <code>data/artworks.csv</code>의 <code>on_view_status</code>(현장 확인 상태)와는 다른 값입니다.</p>
+    <div class="wrap">
+      <table>
+        <thead><tr><th>작품</th><th>제목</th><th>지금</th><th></th></tr></thead>
+        <tbody id="onview-rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script type="module" src="/static/ops.js"></script>
+</body>
+</html>

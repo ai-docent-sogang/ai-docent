@@ -1,10 +1,9 @@
 """운영자용 라우터 (담당 FE1). 관람객 화면이 아니다(관람객 화면은 `/`).
 
+- `GET  /ops`                             운영 화면(`static/ops.html`)
 - `GET  /api/ops/stats`                   관람 기록 집계
 - `GET  /api/ops/artworks`                작품 목록과 켜짐·꺼짐
 - `POST /api/ops/artworks/{id}/on_view`   작품을 켜고 끈다
-
-화면(`/ops`)은 다음 커밋에서 더한다.
 
 집계 수식은 `server/visit_stats.py`에 있고, 켜기/끄기 상태는 `server/on_view.py`에 있다.
 이 파일은 라우팅과 입력 검사, 작품 제목 붙이기만 한다.
@@ -14,13 +13,16 @@
 적어 두었다. 이 전제가 바뀌면 토큰을 먼저 넣어야 한다.
 """
 from datetime import date
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from . import on_view, visit_stats
 
 router = APIRouter()
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 # app.py에서 읽은 작품 목록을 공유한다.
 artworks = {}
@@ -28,6 +30,12 @@ artworks = {}
 
 class OnViewRequest(BaseModel):
     on_view: bool
+
+
+@router.get("/ops")
+def ops_page():
+    """운영 화면. 대시보드, 질문 라벨, 작품 켜기/끄기 세 탭이 한 파일에 있다."""
+    return FileResponse(STATIC_DIR / "ops.html")
 
 
 @router.get("/api/ops/stats")
