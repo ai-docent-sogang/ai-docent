@@ -1,15 +1,9 @@
-"""대화마다 응답 시간·인식 결과·오류를 기록하는 자리.
+"""`/api/turn` 한 번의 메타데이터를 JSON Lines 파일에 덧붙인다 (담당 BE2).
 
-담당: BE2 (docs/역할_가이드.md 4장, 11/12–11/18 "로그 남기기")
-같이 보는 파일: app.py (/api/turn이 끝날 때 여기의 함수를 부르게 될 곳)
-
-구현할 때 지킬 것:
-- 기록해도 되는 것: 시각, 세션 ID, 인식된 artwork_id, 사용한 comparison_id, latency_ms, 오류 종류
-- 기록하면 안 되는 것: 음성, 사진, 관람객이 한 말과 도슨트 답의 내용(개인정보 원칙)
-- 기록 파일은 git에 올리지 않는다(.gitignore의 logs/).
-- 시연 후 이 기록만으로 평균·중앙값 응답 시간을 계산할 수 있어야 한다.
+응답 시간의 평균·중앙값을 계산할 수 있게 시각, 세션 ID, 작품·비교쌍 ID,
+응답 시간, 오류 유형을 기록한다. 음성·사진·대화 원문은 저장하지 않는다.
+기록 디렉터리 `logs/`는 Git에서 제외한다.
 """
-"""Append turn metadata to a local JSON Lines file."""
 import json
 import logging
 from datetime import datetime, timezone

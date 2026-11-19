@@ -1,14 +1,6 @@
-"""Gemini에 한 번 물어보고 도슨트 답을 받아 오는 파일.
+"""Gemini 클라이언트와 `/api/turn` 응답 생성 (담당 BE1).
 
-담당: BE1
-같이 보는 파일: prompts.py (지시문), content.py (작품·비교쌍), session.py (관람객 기억), app.py (이 파일을 부름)
-
-흐름: 세션 상태와 작품 목록을 글(JSON)로 만들고 → 사진·음성·글과 함께 Gemini에 보내고
-→ 정해진 모양(DocentReply)의 JSON으로 답을 받고 → 목록에 없는 ID는 지운다.
-받아쓰기, 작품 인식, 답변 생성을 Gemini 호출 한 번으로 처리한다(개발계획서 4장 B안).
-
-명령어로 실행하면 이 키로 쓸 수 있는 모델 ID를 보여 준다:
-    uv run python -m server.gemini_client --list-models
+`uv run python -m server.gemini_client --list-models`로 사용 가능한 모델을 조회한다.
 """
 
 import json
@@ -24,11 +16,10 @@ from pydantic import BaseModel
 from .content import rank_comparisons
 from .prompts import SYSTEM_INSTRUCTION
 
-# 저장소 최상위의 .env를 읽는다. 이미 설정된 환경 변수는 덮어쓰지 않는다.
+# 이미 설정된 환경 변수를 우선한다.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# 답의 다양성. 0에 가까울수록 같은 질문에 같은 답을 하고, 높을수록 표현이 다양해지지만
-# 지시를 벗어날 가능성도 커진다. 사실만 말해야 하는 도슨트라 낮게 둔다.
+# 근거에서 벗어나는 답변을 줄이도록 낮게 설정한다.
 TEMPERATURE = 0.4
 
 
@@ -54,7 +45,6 @@ class DocentReply(BaseModel):
 
 
 def make_client():
-    """.env의 GEMINI_API_KEY로 Gemini 연결 객체를 만든다. 키가 없으면 안내하고 멈춘다."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise SystemExit("GEMINI_API_KEY가 없습니다. 저장소 최상위의 .env에 키를 넣으세요 (.env.example 참고).")
@@ -62,12 +52,7 @@ def make_client():
 
 
 def build_context(session, artworks, comparisons):
-    """세션 상태와 콘텐츠 DB를 Gemini가 읽을 글로 만든다.
-
-    CATALOG: 모든 작품의 사실(key_facts)과 비교쌍. 비교쌍은 이 관람객에게 맞는 순서로 정렬되어 있어,
-             프롬프트의 "첫 번째 비교를 우선하라"는 규칙과 짝을 이룬다.
-    SESSION: 프로필, 지금 보고 있는 작품, 이미 본 작품, 최근 대화.
-    """
+    """작품·비교쌍과 관람 세션을 JSON으로 구성한다. 추천 비교쌍을 앞에 둔다."""
     catalog = []
     for artwork_id, art in artworks.items():
         ranked = rank_comparisons(comparisons, artwork_id, session.profile, session.used_comparison_ids)
@@ -97,12 +82,7 @@ def build_context(session, artworks, comparisons):
 
 
 def ask_docent(client, model, session, artworks, comparisons, audio_wav=None, image_jpeg=None, text=None):
-    """한 번의 대화(턴)를 Gemini에 보내고 DocentReply를 돌려준다.
-
-    보내는 순서: ① 작품 목록과 세션(build_context) ② 카메라 사진 ③ 관람객의 말(음성 또는 글).
-    사진과 말 앞에 짧은 설명 문장을 붙여 Gemini가 각 자료가 무엇인지 헷갈리지 않게 한다.
-    음성(audio_wav)과 글(text)은 둘 중 하나만 와도 된다. 사진이 없으면 작품 인식은 대화 맥락에만 의존한다.
-    """
+    """카탈로그와 관람객 입력을 한 번 보내 받아쓰기·작품 인식·답변을 요청한다."""
     parts = [types.Part.from_text(text=build_context(session, artworks, comparisons))]
     if image_jpeg:
         parts.append(types.Part.from_text(text="Current camera frame from the visitor's point of view:"))
@@ -118,18 +98,17 @@ def ask_docent(client, model, session, artworks, comparisons, audio_wav=None, im
         contents=[types.Content(role="user", parts=parts)],
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",  # 답을 JSON으로만 받는다
-            response_schema=DocentReply,  # 그 JSON이 DocentReply 모양이어야 한다
+            response_mime_type="application/json",
+            response_schema=DocentReply,
             temperature=TEMPERATURE,
         ),
     )
-    # 보통은 SDK가 response.parsed로 바꿔 준다. 비어 있으면 원문 JSON을 직접 읽는다.
     reply = response.parsed or DocentReply.model_validate_json(response.text)
     return sanitize_reply(reply, artworks, comparisons)
 
 
 def sanitize_reply(reply, artworks, comparisons):
-    """모델이 카탈로그에 없는 작품·비교쌍 ID를 돌려주면 버린다(지어낸 ID가 세션에 기록되지 않게)."""
+    """카탈로그에 없는 작품·비교쌍 ID가 세션에 기록되지 않게 검증한다."""
     if reply.artwork_id not in artworks:
         reply.artwork_id = "unknown"
     valid = {c["comparison_id"] for c in comparisons if c["artwork_id"] == reply.artwork_id}
@@ -139,7 +118,7 @@ def sanitize_reply(reply, artworks, comparisons):
 
 
 if __name__ == "__main__" and "--list-models" in sys.argv:
-    # 임시 클라이언트는 목록을 다 받기 전에 정리되어 연결이 닫힐 수 있어 변수에 붙잡아 둔다.
+    # 모델 목록을 순회하는 동안 클라이언트 연결을 유지한다.
     client = make_client()
     for m in client.models.list():
         if "generateContent" in (m.supported_actions or []):

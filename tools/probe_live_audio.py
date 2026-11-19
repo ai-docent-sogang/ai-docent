@@ -9,7 +9,7 @@ BE1의 compare_modes.py는 Live에 질문을 '텍스트'로 보낸다. 이 도�
 브라우저 음성 인식(static/stt.js)을 Live의 받아쓰기로 대체할 수 있는지가 FE1의 갈림길이므로,
 실제 음성을 넣었을 때 무엇을 들었고 몇 초에 답이 시작되는지를 직접 재야 한다.
 
-설치: uv sync --extra live
+설치: uv sync (websockets는 11/17에 기본 의존성으로 옮겼다)
 준비(맥에서 시험용 음성 만들기. 실제 관람객 음성을 저장하지 않기 위해 합성음을 쓴다):
     say -v Samantha -o /tmp/q.aiff "Who painted this, and why is the boy crying?"
     afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/q.aiff /tmp/q16k.wav
