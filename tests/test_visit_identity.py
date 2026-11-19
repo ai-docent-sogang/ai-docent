@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from server import live  # noqa: E402
 from server.app import app as server_app  # noqa: E402
 
 PASS = FAIL = 0
@@ -95,6 +96,35 @@ with tempfile.TemporaryDirectory() as tmp:
               str(sum(1 for r in rows if r['event'] == 'visit_start')))
         check("visit_id가 둘이다", len({r["visit_id"] for r in rows}) == 2,
               str(len({r['visit_id'] for r in rows})))
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+print("\n3. 관람을 끝내면 기록이 닫히고, 같은 session_id로 다시 붙으면 새 관람이다")
+with tempfile.TemporaryDirectory() as tmp:
+    saved = {k: os.environ.get(k) for k in ("LIVE_VISIT_LOG", "LIVE_VISIT_DIR", "LIVE_VISIT_SOURCE_KIND")}
+    os.environ.update(LIVE_VISIT_LOG="team", LIVE_VISIT_DIR=tmp, LIVE_VISIT_SOURCE_KIND="team_rehearsal")
+    try:
+        with TestClient(server_app) as client:
+            session_id = client.post("/api/session", json={"profile": {}}).json()["session_id"]
+            attach(client, session_id, resume=False)
+            client.post(f"/api/session/{session_id}/end")
+            # 앞 장들이 끝내지 않은 관람은 저장소에 남아 있으므로 이 관람만 본다.
+            check("관람을 끝내면 기록 저장소에서 빠진다", session_id not in live.visit_logs,
+                  str(sorted(live.visit_logs)[:1]))
+            attach(client, session_id, resume=True)
+        rows = lines(tmp)
+        ends = [r for r in rows if r["event"] == "visit_end"]
+        check("끝낸 관람은 visit_end 하나로 닫힌다", len(ends) == 1, f"{len(ends)}번")
+        check("끝낸 이유가 남는다", len(ends) == 1 and ends[0]["reason"] == "visit_ended", str(ends))
+        check("그 뒤 다시 붙으면 새 관람으로 센다",
+              sum(1 for r in rows if r["event"] == "visit_start") == 2
+              and len({r["visit_id"] for r in rows}) == 2,
+              f"{sum(1 for r in rows if r['event'] == 'visit_start')}번, "
+              f"{len({r['visit_id'] for r in rows})}개")
     finally:
         for key, value in saved.items():
             if value is None:

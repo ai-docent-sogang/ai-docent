@@ -42,7 +42,9 @@ ALLOWED: dict[str, set[str]] = {
     "usage": {"artwork_id", "input_audio", "input_image", "input_text", "output_audio", "total"},
     "visit_end": {"reason", "duration_s", "counts"},
 }
-QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close")
+# reconnect는 서버와 Gemini 사이의 연결 교체다. 폰 쪽 연결은 phone_closed·replaced로 센다.
+QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close",
+                  "phone_closed", "replaced")
 
 
 class FieldNotAllowed(ValueError):

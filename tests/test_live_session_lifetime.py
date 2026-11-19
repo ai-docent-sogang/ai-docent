@@ -904,8 +904,10 @@ check("기본값은 꺼짐이다 — 파일을 만들지 않는다",
 rows, raw, _ = visit_log_run(LIVE_VISIT_LOG="team", LIVE_VISIT_SOURCE_KIND="team_rehearsal",
                              LIVE_VISIT_SEASON="2026-가을", LIVE_VISIT_GALLERY="서화실")
 kinds = [r["event"] for r in rows]
-check("관람 하나가 visit_start로 시작해 visit_end로 끝난다",
-      kinds[:1] == ["visit_start"] and kinds[-1:] == ["visit_end"], str(kinds))
+# 폰 연결이 끊긴 것은 관람이 끝난 것이 아니다. 기록은 열린 채로 다시 붙는 폰을 기다리고,
+# END VISIT이나 만료 때 visit_end로 닫힌다(tests/test_visit_identity.py).
+check("관람 기록은 visit_start로 시작하고 연결이 끊겨도 닫히지 않는다",
+      kinds[:1] == ["visit_start"] and "visit_end" not in kinds, str(kinds))
 check("작품 인식이 남는다", any(r["event"] == "artwork_identified" and r["artwork_id"] == ARTWORK
                             and r["via"] == "function" for r in rows), str(kinds))
 check("unknown은 작품으로 세지 않고 따로 센다",
@@ -936,8 +938,8 @@ check("작품을 아는 턴의 usage에 작품 ID가 들어간다",
       len(usages) == 2 and usages[1].get("artwork_id") == ARTWORK, str(usages))
 check("작품을 모르는 인사 턴은 작품 ID가 빈 값이다",
       len(usages) == 2 and usages[0].get("artwork_id") == "", str(usages))
-check("관람이 왜 끝났는지 남는다", rows[-1]["reason"] in ("phone_closed", "replaced", "phone_idle"),
-      str(rows[-1]))
+check("폰 연결이 왜 닫혔는지 남는다",
+      rows[-1]["event"] == "quality" and rows[-1]["issue"] == "phone_closed", str(rows[-1]))
 
 for forbidden in ("Who painted this", "Kim Hong-do", "eighteenth century", "France", "adult"):
     check(f"기록 파일에 {forbidden!r}가 없다", forbidden not in raw)
