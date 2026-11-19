@@ -1,7 +1,6 @@
-"""BE2: 인식 relicId → 서비스 작품 ID → 출처 있는 콘텐츠 조회. 외부 API 호출 없음.
+"""인식용 relicId를 서비스 작품 ID로 연결해 로컬 콘텐츠를 조회한다 (담당 BE2).
 
-ContentCatalog.get_context()를 BE1의 요청-응답/Live 도구에서 공통으로 사용할 수 있다.
-미검수 e뮤지엄 원문과 해외 수집 자료는 답변 근거에서 제외하고 검수 대기 정보만 돌려준다.
+미검수 e뮤지엄 원문과 해외 수집 자료는 검수 대기 목록에만 포함한다.
 """
 import csv
 import json
@@ -31,7 +30,7 @@ def relic_id(url):
 
 
 def source_key(url):
-    """같은 기관의 같은 작품 URL만 결합. 제목/작가 유사도로 결합하지 않는다."""
+    """기관·경로·쿼리가 일치하는 공식 URL을 결합 키로 쓴다."""
     parsed = urlparse(url or "")
     host = (parsed.hostname or "").removeprefix("www.")
     path = parsed.path.rstrip("/")
@@ -49,7 +48,7 @@ def unique_rows(rows, key, label):
 
 
 def mapping_rows(artworks, manifest):
-    """공식 URL의 정확한 relicId로만 연결. 누락 참조도 보고서에 남긴다."""
+    """공식 URL의 relicId로 참조 이미지를 연결하고 누락도 보고한다."""
     references = {}
     for row in manifest:
         references.setdefault(row["artwork_id"], []).append(row)
@@ -121,7 +120,7 @@ class ContentCatalog:
                     self.foreign[key] = row
 
     def resolve(self, recognition_id):
-        """현재 recognizer의 relicId와 수동 선택의 서비스 ID 모두 지원한다."""
+        """인식용 relicId와 수동 선택의 서비스 ID를 모두 받는다."""
         if recognition_id in self.artworks:
             return recognition_id
         return self.mapping.get(recognition_id, "unknown")
