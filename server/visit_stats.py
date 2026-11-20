@@ -268,7 +268,7 @@ def collect(from_day: str, to_day: str, source_kind: str, folder: Path | None = 
     out["range"] = {"from": from_day, "to": to_day, "files": files, "attribution": ATTRIBUTION}
     out["source_kind"] = source_kind
     out["warnings"] = warnings
-    out["note"] = "visit은 사람이 아니라 폰 연결 1회다. 재연결하면 관람이 둘로 세어진다"
+    out["note"] = "visit은 관람 하나다. 폰이 다시 붙어도 한 관람으로 이어 쓴다. 다만 서버를 다시 켜면 새 관람이 된다"
     return out
 
 

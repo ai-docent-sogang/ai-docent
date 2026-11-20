@@ -120,4 +120,9 @@ assert.deepEqual(body.off, ["KHD_SEODANG"], "응답의 목록으로 화면을 �
 // 10. 덩이 이름 셋을 들고 있다
 assert.deepEqual(Object.keys(admin.GROUP_NAMES), ["interest", "control", "unclassified"]);
 
+// 11. 기본 날짜는 UTC가 아니라 로컬 날짜다(한국 00~09시에 어제가 나오던 버그)
+assert.equal(admin.localDay(new Date(2026, 10, 20, 0, 30)), "2026-11-20", "로컬 00:30은 그날이다");
+assert.equal(admin.localDay(new Date(2026, 10, 20, 23, 59)), "2026-11-20");
+assert.equal(admin.localDay(new Date(2026, 0, 5, 9, 0)), "2026-01-05", "월·일은 0을 채운다");
+
 console.log("admin.js 검사 통과 (비율·N/A, 초 표기, 관심 분포 분모, 라벨 탭 재호출 없음, 쿼리·POST 본문)");

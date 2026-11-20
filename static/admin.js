@@ -23,6 +23,12 @@ export function ratio(part, whole) {
   return `${part}/${whole} (${Math.round((part / whole) * 100)}%)`;
 }
 
+/** 로컬 날짜를 `YYYY-MM-DD`로 찍는다. toISOString은 UTC라 한국 00~09시에 어제가 나온다. */
+export function localDay(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 /** 초를 `1분 10초`로 찍는다. 값이 없으면 빈 칸이다. */
 export function seconds(value) {
   if (value === null || value === undefined) return "";
@@ -104,7 +110,6 @@ if (typeof document !== "undefined") {
   let stats = null;          // 대시보드가 받아 둔 집계. 라벨 탭이 다시 부르지 않고 이걸 쓴다.
 
   const today = new Date();
-  const iso = (d) => d.toISOString().slice(0, 10);
 
   function renderDashboard() {
     if (!stats) return;
@@ -192,7 +197,7 @@ if (typeof document !== "undefined") {
   }
 
   window.addEventListener("DOMContentLoaded", async () => {
-    $("from").value = $("to").value = iso(today);
+    $("from").value = $("to").value = localDay(today);
     $("nav-dashboard").addEventListener("click", () => showTab("dashboard"));
     $("nav-labels").addEventListener("click", () => showTab("labels"));
     $("nav-onview").addEventListener("click", () => showTab("onview"));

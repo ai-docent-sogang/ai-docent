@@ -236,6 +236,14 @@ with tempfile.TemporaryDirectory() as tmp:
     check("응답 시간도 조회한 턴만 잰다", out["first_audio_ms"]["n"] == 1, str(out["first_audio_ms"]))
 
 
+print("\n12. 관람 설명 문구가 지금 동작과 맞는다")
+with tempfile.TemporaryDirectory() as tmp:
+    out = visit_stats.collect("2026-11-19", "2026-11-19", "team_rehearsal", folder=Path(tmp))
+    check("관람을 폰 연결 1회라고 적지 않는다(11/19에 관람 하나로 이어 쓰도록 고쳤다)",
+          "폰 연결 1회" not in out["note"] and "둘로 세어" not in out["note"], out["note"])
+    check("폰이 다시 붙어도 한 관람이라고 적는다", "다시 붙어도" in out["note"], out["note"])
+
+
 print(f"\n관람 집계 시험: 통과 {PASS}건, 실패 {FAIL}건")
 if FAIL:
     sys.exit(1)
