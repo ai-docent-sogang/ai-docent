@@ -30,10 +30,10 @@ export function seconds(value) {
   return whole < 60 ? `${whole}초` : `${Math.floor(whole / 60)}분 ${whole % 60}초`;
 }
 
-/** 작품에 대한 관심 질문만 센다. navigation·request는 분모에서 뺀다. */
+/** 관심 질문 비율. 분모에서 앱 조작 질문(navigation·request, control 덩이)을 뺀다. */
 export function interestShare(entry) {
   const groups = entry.groups || {};
-  return { part: groups.interest || 0, whole: entry.questions || 0 };
+  return { part: groups.interest || 0, whole: (entry.questions || 0) - (groups.control || 0) };
 }
 
 /** 대시보드 표의 한 줄씩. 서버가 준 순서를 그대로 쓴다. */

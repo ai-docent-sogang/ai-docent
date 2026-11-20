@@ -59,9 +59,13 @@ assert.equal(admin.seconds(null), "", "값이 없으면 빈 칸이다");
 
 // 3. 작품 관심 분포는 navigation·request를 분모에서 뺀다
 const entry = stats().artworks[0];
-assert.deepEqual(admin.interestShare(entry), { part: 3, whole: 5 });
+assert.deepEqual(admin.interestShare(entry), { part: 3, whole: 3 }, "질문 5건 중 제어 2건을 뺀 3건이 분모");
+assert.deepEqual(admin.interestShare({ questions: 6, groups: { interest: 3, control: 2, unclassified: 1 } }),
+  { part: 3, whole: 4 }, "분류 실패는 분모에 남고 제어만 빠진다");
+assert.equal(admin.ratio(admin.interestShare({ questions: 2, groups: { control: 2 } }).part,
+  admin.interestShare({ questions: 2, groups: { control: 2 } }).whole), "N/A", "제어 질문뿐이면 N/A");
 const rows = admin.artworkRows(stats());
-assert.equal(rows[0].interest, "3/5 (60%)", "관심 질문 3건 / 질문 5건");
+assert.equal(rows[0].interest, "3/3 (100%)", "관심 질문 3건 / 제어를 뺀 질문 3건");
 assert.equal(rows[0].recognized, "1분 10초");
 assert.equal(rows[0].openEnded, 1, "하한값 구간 수를 들고 간다");
 assert.equal(rows[0].noSource, 1);
