@@ -188,7 +188,9 @@ def handsfree_instruction(profile, artworks):
         "comparison_id from the latest COMPARISON OPTIONS. Do not compare with anything else.\n"
         + ("- Whenever the visitor asks you something about the artwork, call lookup_facts before you "
            "answer: once per question, with the label that fits it. Answer only from its result. If it "
-           "does not hold the answer, say you do not have it. Greetings and small talk need no call.\n"
+           "does not hold the answer, say you do not have it. The facts are valid for that one question "
+           "only: for every later question about the artwork, call lookup_facts again, even if you "
+           "think you remember the answer. Greetings and small talk need no call.\n"
            if LIVE_FACTS == "per_question" else
            "- Whenever the visitor asks you something, call report_question before you answer: once per "
            "question, with the label that fits what they asked for and the outcome you are about to give. "

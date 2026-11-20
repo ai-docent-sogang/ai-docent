@@ -118,9 +118,10 @@ class LiveConversation:
         """완료된 답변과 작품·비교 정보를 관람 기억에 반영하고 질문 횟수를 기록한다."""
         said = self.state["said"].strip()
         if not said:
-            # 말이 없는 턴에도 보고는 올 수 있다. 비우지 않으면 다음 질문에 그 라벨이 붙는다.
-            self.state["label"] = self.state["outcome"] = ""
-            self.state["grounded"] = False
+            # 라벨을 여기서 비우지 않는다. 실제 Gemini는 함수를 부른 직후 말 없는 turn_complete를 먼저
+            # 보내고 답변은 그 뒤에 온다(11/20 실측: 호출 33.31초, 답변 음성 33~34초, 답변 끝 39.3초).
+            # 이 자리에서 비우면 방금 적은 라벨과 grounded가 답변 턴에 닿기 전에 사라진다.
+            # 한계: 추임새에 함수를 부르고 침묵하면 그 라벨이 다음 질문에 붙을 수 있다.
             return
         if (self.mode == "handsfree" and not self.state["comparison_called"]
                 and self.state["artwork_id"] in self.artworks):
@@ -219,6 +220,7 @@ class LiveConversation:
                 return {"ok": False, "error": "No artwork is identified yet. Do not answer about any "
                                               "painting. Look at the camera and call report_current_artwork."}
             self.state["grounded"] = True
-            return {"ok": True, "facts": build_artwork_context(found)}
+            return {"ok": True, "facts": build_artwork_context(found),
+                    "note": "These facts are for this question only. Call lookup_facts again for the next one."}
         return {"ok": False, "error": f"unknown function {call.name}"}
 

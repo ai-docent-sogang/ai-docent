@@ -69,18 +69,26 @@ with tempfile.TemporaryDirectory() as tmp:
     check("라벨이 붙는다", rows and rows[0]["label"] == "artist", str(rows and rows[0]["label"]))
     check("결과가 붙는다", rows and rows[0]["outcome"] == "answered")
 
-print("\n2. 말이 없는 턴의 보고는 다음 질문으로 새지 않는다")
+print("\n2. 함수를 부른 직후 말 없는 턴이 먼저 끝나도 라벨이 답변 턴까지 간다(11/20 실측 순서)")
 with tempfile.TemporaryDirectory() as tmp:
     c = talk(tmp)
-    call(c, "lookup_facts", label="meaning", outcome="answered")
-    c.state["heard"], c.state["said"] = "mm-hmm", ""      # 모델이 아무 말도 하지 않은 턴
+    c.state["heard"] = "Who painted this?"
+    call(c, "lookup_facts", label="artist", outcome="answered")
+    c.remember_turn()                                    # 도구 호출 턴의 turn_complete. 아직 말이 없다
+    check("말이 없는 턴은 질문으로 세지 않는다", len(questions(tmp)) == 0, str(len(questions(tmp))))
+    check("그 턴이 끝나도 보고가 남아 있다", c.state["label"] == "artist" and c.state["grounded"] is True,
+          str((c.state["label"], c.state["grounded"])))
+    c.state["said"] = "Kim Hong-do did."                 # 뒤이어 온 답변
     c.remember_turn()
-    check("말이 없으면 질문으로 세지 않는다", len(questions(tmp)) == 0, str(len(questions(tmp))))
+    rows = questions(tmp)
+    check("답변 턴에 라벨과 grounded가 붙는다",
+          len(rows) == 1 and rows[0]["label"] == "artist" and rows[0]["grounded"] is True,
+          str(rows))
     c.state["heard"], c.state["said"] = "And this one?", "That is Inwang."
     c.remember_turn()
     rows = questions(tmp)
-    check("다음 질문은 앞 턴의 라벨을 물려받지 않는다",
-          len(rows) == 1 and rows[0]["label"] == "unknown", str(rows and rows[0]["label"]))
+    check("기록하고 나면 다음 질문은 앞 라벨을 물려받지 않는다",
+          len(rows) == 2 and rows[1]["label"] == "unknown" and rows[1]["grounded"] is False, str(rows[1:]))
 
 print("\n3. 보고가 없으면 unknown으로 남는다")
 with tempfile.TemporaryDirectory() as tmp:
@@ -111,6 +119,8 @@ with tempfile.TemporaryDirectory() as tmp:
     c = talk(tmp)
     got = result(c, "lookup_facts", label="fact")
     check("조회가 작품 사실을 돌려준다", got.get("ok") and "FACTS" in got["facts"], str(got)[:80])
+    check("결과에 '이번 질문에만 유효하다'는 안내가 붙는다(후속 질문에서 다시 부르게)",
+          "this question only" in got.get("note", ""), str(got.get("note")))
     c.state["heard"], c.state["said"] = "When?", "1805."
     c.remember_turn()
     c.state["heard"], c.state["said"] = "Ha ha, nice.", "Glad you like it."
