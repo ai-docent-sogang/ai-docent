@@ -76,8 +76,8 @@ ai-docent/  (저장소 최상위)
 │   │                     이미지 목록표·벡터·인식 정답표 (BE2)
 │   ├── check_content.py   콘텐츠 CSV 검사 (BE2, 구현됨. errors가 0이 아니면 서버를 켜지 않는다)
 │   ├── eval_recognition.py  인식 정답률 도구 자리 (BE2, 아직 구현 안 됨)
-│   └── classify_questions.py, make_visit_analytics_mock_report.py
-│                         관람 분석 측정 (FE1)
+│   └── classify_questions.py, make_visit_analytics_mock_report.py, make_mock_visits.py
+│                         관람 분석 측정과 운영 화면용 가짜 기록 (FE1, make_mock_visits 사용법은 파일 머리 주석)
 ├── tests/       시험 (FE1). 실행 방법은 각 파일 맨 위 주석
 │   ├── live/             [Live] 세션 수명, 질문 턴, 관람 식별, 화면 대화·마이크·재생
 │   ├── pre_live/         [Live 이전] /api/turn의 비교쌍 필터
