@@ -161,6 +161,31 @@ try:
 finally:
     live_config.LIVE_FACTS = "per_question"
 
+print("\n9. 비교로 답한 턴도 질문으로 센다(11/23 결정)")
+with tempfile.TemporaryDirectory() as tmp:
+    c = talk(tmp)
+    got = result(c, "report_comparison", comparison_id="C_KHD_BRUEGEL")
+    check("비교 데이터를 돌려준다", got.get("ok") is True, str(got)[:80])
+    c.state["heard"], c.state["said"] = "Anything like this abroad?", "Bruegel painted a similar scene."
+    c.remember_turn()
+    rows = questions(tmp)
+    check("grounded=True, 라벨은 comparison",
+          len(rows) == 1 and rows[0]["grounded"] is True and rows[0]["label"] == "comparison", str(rows))
+    check("outcome은 건드리지 않는다(보고가 없으면 unknown)", rows[0]["outcome"] == "unknown", str(rows[0]))
+
+    c = talk(tmp)
+    result(c, "lookup_facts", label="meaning", outcome="answered")
+    result(c, "report_comparison", comparison_id="C_KHD_BRUEGEL")
+    c.state["heard"], c.state["said"] = "What does it mean, and compare?", "..."
+    c.remember_turn()
+    rows = questions(tmp)
+    check("같은 턴에 lookup_facts 라벨이 있으면 그 라벨을 지킨다", rows[-1]["label"] == "meaning", str(rows[-1]))
+
+    c = talk(tmp)
+    got = result(c, "report_comparison", comparison_id="C_NOT_REAL")
+    check("거절된 비교는 질문으로 세지 않는다", got.get("ok") is False and c.state["grounded"] is False,
+          str(got)[:80])
+
 print(f"\n질문 턴 시험: 통과 {PASS}건, 실패 {FAIL}건")
 if FAIL:
     sys.exit(1)

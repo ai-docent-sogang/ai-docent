@@ -196,6 +196,10 @@ class LiveConversation:
                                  f"({self.state['artwork_id'] or 'none reported yet'}). Valid ids: {valid}. "
                                  "Do not make this comparison."}
             self.state["comparison_id"] = comparison_id
+            # 비교 데이터도 콘텐츠 DB에서 받은 사실이므로 이 턴은 질문으로 센다(11/23 결정).
+            # 같은 턴에 lookup_facts가 이미 라벨을 적었으면 그 값을 지키고, 없을 때만 comparison을 쓴다.
+            self.state["grounded"] = True
+            self.state["label"] = self.state["label"] or "comparison"
             self.to_browser.put_nowait(("text", {
                 "type": "comparison", "comparison_id": comparison_id, "artwork_id": pair["artwork_id"],
                 "source": "function",
