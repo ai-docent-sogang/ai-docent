@@ -1,10 +1,10 @@
 # AI 도슨트 (AIVY)
 
-외국인 관람객이 국립중앙박물관 조선 회화 앞에서 폰 카메라로 그림을 비추고 영어로 물으면, 도슨트가 작품을 알아보고 관람객이 아는 외국 그림과 비교해 답하는 폰 웹앱입니다. 2026-11-18 멘토 전달본과 12/1 시연(서화실 촬영)을 준비하고 있습니다.
+외국인 관람객이 국립중앙박물관 조선 회화 앞에서 폰 카메라로 그림을 비추고 영어로 물으면, 도슨트가 작품을 알아보고 관람객이 아는 외국 그림과 비교해 답하는 폰 웹앱입니다. 12/1 시연(서화실 촬영)을 준비하고 있습니다. 멘토 전달본은 `deliverables/`에 날짜별로 만듭니다(git 제외).
 
 계획 전체는 [개발계획서](docs/개발계획서.md), 팀원별 할 일은 [역할 가이드](docs/역할_가이드.md), 지금 어디까지 했는지는 [진행 상황](docs/진행상황.md), 서버와 앱이 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
 
-## 지금 상태 (2026-11-23, 브랜치 `dohyeok/readme-env-verify` 기준)
+## 지금 상태 (2026-11-24 기준)
 
 - **화면**: AIVY(FE2). 관람 시작 → 카메라로 그림 비추기 → Hold to talk로 말하거나 글로 질문 → 인식된 작품 상세 → My visit 요약 → 관람 종료.
 - **대화 방식**: Live 실시간 음성(`WS /ws/live`)이 본선입니다. 폰이 마이크 소리와 3초마다 사진을 보내고, 서버가 Gemini Live로 중계해 음성 답을 돌려줍니다. 연결이 실패하면 화면이 누르고 말하기로 돌아가 요청·응답 방식(`POST /api/turn`)을 씁니다. 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
@@ -24,7 +24,7 @@
 `server/`와 `static/`는 `live/`·`pre_live/`를 모두 가지고, `tests/`는 둘 다, `tools/`는 `live/`만 가집니다(Live 이전 방식에는 따로 둔 도구가 없습니다). 방식 하나만 보려면 그 폴더들만 열면 됩니다.
 
 ```text
-ai-docent/  (저장소 최상위)
+ai-docent-team/  (저장소 최상위)
 ├── AGENTS.md, CLAUDE.md   팀 공통 작업 지침, AI 코딩 도구용 안내
 ├── .env.example           .env 견본 (실제 .env는 git 제외). 관람 기록은 기본 꺼짐
 ├── docs/
@@ -165,6 +165,8 @@ PYTHONPATH=. uv run uvicorn --app-dir tools/live live_relay_spike:app --port 801
 
 ## 시험
 
+시험은 pytest가 아니라 파일을 하나씩 스크립트로 실행합니다(pytest로는 수집되지 않습니다).
+
 ```bash
 PYTHONPATH=. uv run python tests/live/test_live_session_lifetime.py
 PYTHONPATH=. uv run python tests/live/test_question_turn.py
@@ -203,19 +205,19 @@ PYTHONPATH=. uv run python -m tools.check_content
 
 | ID | 작품 (국립중앙박물관 소장품번호) | 비교 작품 |
 | --- | --- | --- |
-| `JS_INWANG` | 정선, 인왕제색도 (건희 1) | 세잔 「생트빅투아르 산」(Met) / 호쿠사이 「개풍쾌청」(Met) |
-| `KHD_SSIREUM` | 김홍도, 씨름 《단원 풍속도첩》 (본관 6504-22) | 브뤼헐 「농민의 결혼식」(KHM) / 호쿠사이 망가(Met) |
-| `KHD_SEODANG` | 김홍도, 서당 《단원 풍속도첩》 (본관 6504-23) | 브뤼헐 「아이들의 놀이」(KHM) |
-| `KSH_SELF` | 강세황 초상 자필본 (구 10562) | 렘브란트 「63세의 자화상」(내셔널갤러리) / 뒤러 「모피 옷을 입은 자화상」(바이에른 주립회화컬렉션) |
-| `KJH_SEHAN` | 김정희, 세한도 (증 10000) | 없음 |
-| `LIM_GANGSAN` | 이인문, 강산무진도 (덕수 927) | 없음 |
-| `KHD_CHUSEONG` | 김홍도, 추성부도 (건희 16) | 없음 |
-| `SYB_BABY` | 신윤복, 아기 업은 여인 (덕수 2291-13) | 없음 |
-| `CHAEKGADO_6` | 책가도 6곡병 (건희 4123) | 없음 |
-| `LA_DOGS` | 이암, 어미개와 강아지 (본관 255) | 없음 |
-| `SSD_CHOCHUNG` | 전 신사임당, 초충도 (신수 3550) | 없음 |
+| `JS_INWANG` | 정선, 인왕제색도 (건희 1) | Paul Cézanne 「Mont Sainte-Victoire」 / Katsushika Hokusai 「South Wind, Clear Sky (Gaifū kaisei), also known a…」 / Sesson Shūkei 「Landscape with Rocky Precipice」 |
+| `KHD_SSIREUM` | 김홍도, 씨름 《단원 풍속도첩》 (본관 6504-22) | Pieter Bruegel the Elder 「Peasant Wedding」 / Katsushika Hokusai 「The Sumo Wrestlers Wadagahara Jinshirō and Kachōza…」 |
+| `KHD_SEODANG` | 김홍도, 서당 《단원 풍속도첩》 (본관 6504-23) | Pieter Bruegel the Elder 「Children's Games」 |
+| `KSH_SELF` | 강세황 초상 자필본 (구 10562) | Albrecht Dürer 「Self-Portrait with Fur-Trimmed Robe」 / Rembrandt 「Self Portrait at the Age of 63」 |
+| `KJH_SEHAN` | 김정희, 세한도 (증 10000) | Kano Sansetsu 「Wang Ziyou Visiting Dai Andao on a Snowy Evening」 |
+| `LIM_GANGSAN` | 이인문, 강산무진도 (덕수 927) | Wang Yuanqi 「Streams and Mountains without End」 / Wang Hui and assistants 「The Kangxi Emperor’s Southern Inspection Tour, Scr…」 / Sakai Ōho 「Six Jewel Rivers」 / Unkoku Tōgan 「Landscape of the Four Seasons」 |
+| `KHD_CHUSEONG` | 김홍도, 추성부도 (건희 16) | Painting by Ike no Taiga 「Autumn Landscape」 |
+| `SYB_BABY` | 신윤복, 아기 업은 여인 (덕수 2291-13) | Kitagawa Utamaro 「Mother and Child」 / Mary Cassatt 「Mother and Child (Baby Getting Up from His Nap)」 |
+| `CHAEKGADO_6` | 책가도 6곡병 (건희 4123) | Frederic Thomas Somerby 「Trompe l'oeil Painting」 |
+| `LA_DOGS` | 이암, 어미개와 강아지 (본관 255) | Nagasawa Rosetsu 「Puppies in the Snow」 |
+| `SSD_CHOCHUNG` | 전 신사임당, 초충도 (신수 3550) | Qi Baishi 「Insects and Plants」 / Maria Sibylla Merian 「Study of Capers, Gorse, and a Beetle」 |
 
-작품 11점과 비교쌍 7건은 모두 FE3 검토를 거쳐 `verification_status=verified`입니다(`checked_at` 2026-11-09). 작품 사실(`key_facts`)은 e뮤지엄 작품 페이지(`official_url`)에서, 비교쌍의 유사점·차이점은 양쪽 작품의 공식 소장품 기록에서 옮겼습니다. 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고 서버는 이 열을 읽지 않습니다.
+작품 11점과 비교쌍 20건은 모두 FE3 검토를 거쳐 `verification_status=verified`입니다(`checked_at` 2026-11-18). 작품 사실(`key_facts`)은 e뮤지엄 작품 페이지(`official_url`)에서, 비교쌍의 유사점·차이점은 양쪽 작품의 공식 소장품 기록에서 옮겼습니다. 페이지로 확인하지 못한 문장은 `unverified_facts`에 남겼고 서버는 이 열을 읽지 않습니다.
 
 - **서화실 실제 전시 여부(`on_view_status`)는 11점 모두 아직 "확인 필요"입니다.** 시연 전에 현장과 박물관 공식 사이트에서 확인하고, 전시되지 않은 작품은 뺍니다.
 - 서버는 아직 `verification_status`로 거르지 않습니다(`server/content.py`). 지금은 모두 verified지만, 검증 안 된 행이 생기면 시연 전에 빼야 합니다.

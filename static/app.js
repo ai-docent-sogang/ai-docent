@@ -210,6 +210,14 @@ function rememberReply(text) {
   $("replay").disabled = !lastReply;
   if (lastReply) readReply(lastReply);
 }
+function startErrorText(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError")
+    return "Camera or microphone access was blocked. Allow both in your browser settings, then try again.";
+  if (error?.name === "NotFoundError" || error?.name === "OverconstrainedError")
+    return "No camera or microphone was found on this device.";
+  if (error?.message === MIC_BLOCKED) return MIC_BLOCKED[0].toUpperCase() + MIC_BLOCKED.slice(1);
+  return "We could not start your visit. Check your connection and try again.";
+}
 function addMessage(who,text) {
   if (!text) return;
   const div = document.createElement("div");
@@ -217,6 +225,7 @@ function addMessage(who,text) {
   div.textContent = text;
   $("log").appendChild(div);
   $("log").scrollTop = $("log").scrollHeight;
+  return div;
 }
 function getSelectedRegion() {
   return $("region-select").options[$("region-select").selectedIndex]?.text || "North America";
@@ -342,7 +351,7 @@ $("onboarding-form").addEventListener("submit",async event=>{
     pendingLive.close(); // FE1 Live 연결 (11/18)
     if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
     $("start").disabled=false;
-    alert("Could not start visit: "+error.message);
+    alert(startErrorText(error));
   }
 });
 
@@ -396,9 +405,10 @@ async function sendTurn({audio,text,frame}){
   $("replay").disabled=true;$("test-voice").disabled=true;talkBtn.disabled=true;
   setStatus("Thinking…");
   const started=performance.now();
+  const visitorBubble=addMessage("visitor",text||"(voice question)");
   try{
     const data=await postTurn({sessionId,audio,text,frame});
-    addMessage("visitor",data.transcript||text||"Voice question");
+    if(data.transcript)visitorBubble.textContent=data.transcript;
     addMessage("docent",data.reply);
     recordArtwork(data);
     rememberReply(data.reply);
@@ -409,7 +419,7 @@ async function sendTurn({audio,text,frame}){
       " · server profile: "+(profile.country||"unset")+" · total "+total+" ms";
     setStatus("Ask another question or review your artwork.");
   }catch(error){
-    setStatus("Request failed: "+error.message);
+    setStatus("The guide could not answer. Check your connection and ask again.");
   }finally{
     busy=false;$("replay").disabled=!lastReply;$("test-voice").disabled=false;
     talkBtn.disabled=false;
@@ -446,7 +456,7 @@ $("end-visit").addEventListener("click",async()=>{
     $("details-overlay").hidden=true;showScreen("welcome-screen");
   }catch(error){
     $("end-visit").disabled=false;
-    alert("Could not end the server session: "+error.message+". Please retry.");
+    alert("We could not end your visit on the server. Check your connection and tap End visit again.");
     return;
   }
   $("end-visit").disabled=false;

@@ -16,7 +16,7 @@ Claude Code가 이 저장소에서 작업할 때 읽는 파일이다. 팀 공통
 
 - 설치: `uv sync` (사진 인식까지 쓰려면 `uv sync --extra recognition`)
 - 서버: `uv run uvicorn server.app:app --host 0.0.0.0 --port 8000`
-- 콘텐츠 CSV 검사 도구(`tools/check_content.py`)는 아직 구현되지 않았다. 생기기 전까지 CSV를 고친 뒤에는 서버를 다시 켜서 직접 확인한다.
+- 콘텐츠 CSV를 고친 뒤에는 검사 도구를 돌린다: `PYTHONPATH=. uv run python -m tools.check_content`. errors가 0이어야 한다(2026-11-24 기준 0 errors, 18 warnings). 그다음 서버를 다시 켜서 확인한다.
 - 프롬프트나 콘텐츠를 바꾼 뒤에는 서버를 다시 켜고, `data/eval/questions.csv`의 같은 질문 세트로 바꾸기 전과 후를 비교한다.
 
 ## Claude가 지킬 것

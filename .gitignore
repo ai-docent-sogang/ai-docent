@@ -7,3 +7,5 @@ __pycache__/
 data/incoming/
 data/reference/index*.npz
 data/test_photos/
+deliverables/
+.worktrees/
