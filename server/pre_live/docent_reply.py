@@ -8,7 +8,7 @@ import json
 from google.genai import types
 from pydantic import BaseModel
 
-from ..content import rank_comparisons
+from ..content import rank_comparisons, verified_comparisons
 from ..prompts import SYSTEM_INSTRUCTION
 
 # 근거에서 벗어나는 답변을 줄이도록 낮게 설정한다.
@@ -68,6 +68,7 @@ def build_context(session, artworks, comparisons):
 
 def ask_docent(client, model, session, artworks, comparisons, audio_wav=None, image_jpeg=None, text=None):
     """카탈로그와 관람객 입력을 한 번 보내 받아쓰기·작품 인식·답변을 요청한다."""
+    comparisons = verified_comparisons(comparisons)   # 검증 안 된 비교쌍은 Live와 같이 후보에서 뺀다
     parts = [types.Part.from_text(text=build_context(session, artworks, comparisons))]
     if image_jpeg:
         parts.append(types.Part.from_text(text="Current camera frame from the visitor's point of view:"))

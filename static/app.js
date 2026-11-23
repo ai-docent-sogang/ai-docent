@@ -1,6 +1,6 @@
 // AIVY mobile UI. UI integration by FE2; retain FE1's v0 session, camera, audio and /api/turn contract.
-// IMPORTANT: region/age selection currently lives in this browser session only. BE1 must add a
-// documented profile API before personalization can influence Gemini responses.
+// Region/age selection is sent to the server as the profile in the first /ws/live message
+// (see startLive). The /api/turn fallback does not send it.
 import { postTurn, startSession } from "./api.js";
 import { initAudio, speak, stopSpeaking, toWav16k } from "./pre_live/audio.js";
 import { continueSavedVisit, createLiveConversation, createVisitStore, createWakeLock, FRAME_MAX_WIDTH } from "./live/live_conversation.js"; // FE1 Live 연결 (11/18)

@@ -5,7 +5,8 @@
 
 import sys
 
-from ..content import build_artwork_context, load_artworks, load_comparisons, rank_comparisons
+from ..content import (build_artwork_context, load_artworks, load_comparisons, rank_comparisons,
+                       verified_comparisons)
 from ..prompts import LIVE_INSTRUCTION
 
 # 화면의 지역·국가 값을 `data/comparisons.csv`의 profile_tags에 맞춘다.
@@ -55,7 +56,7 @@ def profile_block(profile):
 
 def comparison_block(comparisons, artwork_id, profile, used_ids=()):
     """검증된 비교 후보를 관람객 프로필에 맞춰 정렬해 제시한다."""
-    verified = [c for c in comparisons if c.get("verification_status", "").strip().lower() == "verified"]
+    verified = verified_comparisons(comparisons)
     home = home_of(profile).lower()
     ranking_profile = {"country": home, "familiar_art": REGION_TAGS.get(home, [])}
     ranked = rank_comparisons(verified, artwork_id, ranking_profile, set(used_ids))[:MAX_COMPARISON_OPTIONS]

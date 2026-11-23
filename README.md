@@ -4,13 +4,12 @@
 
 계획 전체는 [개발계획서](docs/개발계획서.md), 팀원별 할 일은 [역할 가이드](docs/역할_가이드.md), 지금 어디까지 했는지는 [진행 상황](docs/진행상황.md), 서버와 앱이 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
 
-## 지금 상태 (2026-11-18, main 기준)
+## 지금 상태 (2026-11-23, 브랜치 `dohyeok/readme-env-verify` 기준)
 
 - **화면**: AIVY(FE2). 관람 시작 → 카메라로 그림 비추기 → Hold to talk로 말하거나 글로 질문 → 인식된 작품 상세 → My visit 요약 → 관람 종료.
-- **대화 방식**: 요청-응답(`POST /api/turn`). 녹음(16kHz WAV)·사진·글을 Gemini에 한 번에 보내 받아쓰기, 작품 판단, 답변을 받고, 답은 브라우저 `speechSynthesis`(en-US)로 읽어 줍니다.
-- **Live 실시간 음성**: 11/11 회의에서 본선으로 정했습니다. 중계는 아직 `tools/live/live_relay_spike.py` 시험대(포트 8013, `/live` 시험 페이지)에 있고, 운영 서버(`server/app.py`)에 붙이는 작업은 진행 중입니다(main에 아직 없음).
-- **작품 인식**: 사진과 작품 목록을 함께 보내 Gemini가 고릅니다(계획서 5장 1안). 확신이 없으면 `unknown`을 돌려줍니다. 기준 이미지 검색 방식(`server/recognition.py`, BE2)은 아직 서버에 연결 전입니다.
-- **개인화**: 첫 인사에서 출신 국가와 익숙한 미술을 묻고, 대화에서 프로필을 뽑아 비교 작품 순서를 정합니다. 화면의 지역·연령 선택은 아직 서버로 가지 않습니다.
+- **대화 방식**: Live 실시간 음성(`WS /ws/live`)이 본선입니다. 폰이 마이크 소리와 3초마다 사진을 보내고, 서버가 Gemini Live로 중계해 음성 답을 돌려줍니다. 연결이 실패하면 화면이 누르고 말하기로 돌아가 요청·응답 방식(`POST /api/turn`)을 씁니다. 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
+- **작품 인식**: Live 모델이 사진을 보고 작품을 고릅니다(`report_current_artwork`). 모르면 `unknown`입니다. `LIVE_RECOGNIZER_FALLBACK=on`이면 `unknown`일 때 기준 이미지 검색(`server/artwork_recognizer.py`, BE2)이 한 번 더 판단합니다(기본 off, `uv sync --extra recognition` 필요).
+- **개인화**: 첫 인사에서 출신 국가와 익숙한 미술을 묻고, 화면에서 고른 지역·연령은 Live 첫 메시지의 `profile`로 서버에 갑니다. 비교 작품 순서가 이 프로필로 정해집니다. `/api/turn` 안전망 경로는 화면 선택값을 보내지 않습니다.
 - **저장하지 않는 것**: 녹음, 카메라 사진, 세션. 세션은 서버 메모리에만 있다가 서버를 끄면 사라집니다.
 
 ## 폴더 구조와 담당
@@ -22,12 +21,12 @@
 - **`archive/`**: 끝난 실험(음성·방식 비교)과 날짜가 지난 문서입니다. 지금 운영·분석에는 쓰지 않으므로 평소에는 열지 않아도 됩니다. 무엇을 왜 옮겼는지는 [`archive/README.md`](archive/README.md)에 있습니다.
 - 두 폴더 밖에 있는 파일은 두 방식이 함께 쓰거나(`content.py`, `session.py`, `gemini_client.py`의 `make_client`), 대화 방식과 상관없는 것(인식, 관람 기록, 운영 화면)입니다.
 
-`server/`, `static/`, `tests/`, `tools/`가 모두 같은 이름의 하위 폴더 `live/`·`pre_live/`를 가집니다. 방식 하나만 보려면 그 폴더 넷만 열면 됩니다.
+`server/`와 `static/`는 `live/`·`pre_live/`를 모두 가지고, `tests/`는 둘 다, `tools/`는 `live/`만 가집니다(Live 이전 방식에는 따로 둔 도구가 없습니다). 방식 하나만 보려면 그 폴더들만 열면 됩니다.
 
 ```text
 ai-docent/  (저장소 최상위)
 ├── AGENTS.md, CLAUDE.md   팀 공통 작업 지침, AI 코딩 도구용 안내
-├── .env.example           .env 견본 (실제 .env는 git 제외)
+├── .env.example           .env 견본 (실제 .env는 git 제외). 관람 기록은 기본 꺼짐
 ├── docs/
 │   ├── 개발계획서.md, 역할_가이드.md, 진행상황.md, 시연_체크리스트.md
 │   ├── api.md             서버와 앱이 주고받는 형식 (BE1·FE1)
@@ -40,6 +39,7 @@ ai-docent/  (저장소 최상위)
 │   │   ├── live.py            WebSocket 중계 /ws/live, /live 시험 페이지 (FE1)
 │   │   ├── live_config.py     Live 설정, 함수 선언, 지시문 조립 (FE1)
 │   │   ├── live_context.py    작품·비교 후보를 지시문에 넣는 글 (BE1)
+│   │   ├── live_recognizer_fallback.py  Live가 unknown일 때 기준 이미지 검색으로 한 번 더 판단(기본 off) (FE1)
 │   │   ├── live_conversation.py  한 관람의 대화 상태, 함수 호출 응답 (FE1)
 │   │   └── live_transcript.py    받아쓰기 정리, 답 속 비교작 찾기 (FE1)
 │   ├── pre_live/         [Live 이전] 요청·응답 방식
@@ -52,8 +52,8 @@ ai-docent/  (저장소 최상위)
 │   ├── visit_log.py, visit_stats.py, question_labels.py, on_view.py, admin.py
 │   │                     관람 기록·집계·운영 화면. 대화 방식과 무관 (FE1)
 │   ├── recognition.py, artwork_crop.py, artwork_recognizer.py, catalog.py
-│   │                     사진으로 작품 후보 찾기 (BE2, 서버 연결 전)
-│   └── logs.py           응답 시간·인식 기록 자리 (BE2, 아직 구현 안 됨)
+│   │                     사진으로 작품 후보 찾기 (BE2. `LIVE_RECOGNIZER_FALLBACK=on`일 때만 Live가 부름)
+│   └── logs.py           `/api/turn` 응답 시간 기록 (BE2, 구현돼 있으나 아직 서버가 부르지 않음)
 ├── static/      폰 웹앱
 │   ├── index.html, style.css, app.js
 │   │                     AIVY 화면과 흐름. 두 방식의 흐름이 app.js 한 파일에 같이 있음 (FE2. FE1의 세션·카메라·녹음 흐름을 그대로 씀)
@@ -74,12 +74,13 @@ ai-docent/  (저장소 최상위)
 │   ├── live/             [Live] live_relay_spike.py(중계 시험대, 포트 8013), fake_browser_live.py, live_frame_recognition.py (FE1)
 │   ├── build_manifest.py, build_index.py, emuseum_page.py, make_answer_sheet.py
 │   │                     이미지 목록표·벡터·인식 정답표 (BE2)
-│   ├── check_content.py, eval_recognition.py
-│   │                     CSV 검사·인식 정답률 도구 자리 (BE2, 아직 구현 안 됨)
+│   ├── check_content.py   콘텐츠 CSV 검사 (BE2, 구현됨. errors가 0이 아니면 서버를 켜지 않는다)
+│   ├── eval_recognition.py  인식 정답률 도구 자리 (BE2, 아직 구현 안 됨)
 │   └── classify_questions.py, make_visit_analytics_mock_report.py
 │                         관람 분석 측정 (FE1)
 ├── tests/       시험 (FE1). 실행 방법은 각 파일 맨 위 주석
 │   ├── live/             [Live] 세션 수명, 질문 턴, 관람 식별, 화면 대화·마이크·재생
+│   ├── pre_live/         [Live 이전] /api/turn의 비교쌍 필터
 │   └── sandbox.py, test_admin_*, test_on_view.py, test_visit_log.py, test_visit_stats.py
 │                         공통·운영·기록 시험
 ├── archive/     끝난 실험과 지난 문서. 지금 운영·분석에는 쓰지 않는다. 원래 경로를 그대로 따라 둠 (archive/README.md)
@@ -165,19 +166,32 @@ PYTHONPATH=. uv run uvicorn --app-dir tools/live live_relay_spike:app --port 801
 ## 시험
 
 ```bash
+PYTHONPATH=. uv run python tests/live/test_live_session_lifetime.py
+PYTHONPATH=. uv run python tests/live/test_question_turn.py
+PYTHONPATH=. uv run python tests/live/test_visit_identity.py
+PYTHONPATH=. uv run python tests/pre_live/test_comparison_filter.py
+PYTHONPATH=. uv run python tests/test_admin_api.py
+PYTHONPATH=. uv run python tests/test_on_view.py
+PYTHONPATH=. uv run python tests/test_visit_log.py
+PYTHONPATH=. uv run python tests/test_visit_stats.py
+node tests/live/test_live_conversation.mjs
 node tests/live/test_live_mic.mjs
 node tests/live/test_live_player.mjs
-PYTHONPATH=. uv run python tests/live/test_live_session_lifetime.py
+node tests/test_admin_view.mjs
 ```
 
-서버나 Gemini 없이 돌아갑니다. 콘텐츠 CSV 검사 도구(`tools/check_content.py`)는 아직 구현되지 않았습니다. CSV를 고친 뒤에는 서버를 다시 켜서 직접 확인합니다.
+서버나 Gemini 없이 돌아갑니다. 콘텐츠 CSV를 고친 뒤에는 검사 도구도 돌립니다.
+
+```bash
+PYTHONPATH=. uv run python -m tools.check_content
+```
 
 ## 시연 순서
 
 1. 아이폰에 이어폰을 연결하고 무음 모드를 끕니다. 무음 모드에서는 음성이 나오지 않을 수 있습니다.
 2. 첫 화면에서 지역과 연령대를 고르고 **START EXPLORING**을 누른 뒤 카메라·마이크 접근을 허용합니다. 도슨트가 인사하며 어디서 왔는지, 어떤 미술을 좋아하는지 묻습니다.
-3. **Hold to talk**를 누른 채 답합니다. 예: "I'm from France and I love Impressionism."
-4. 모니터나 인쇄물의 작품을 비추고 버튼을 누른 채 질문합니다. 예: "What am I looking at?", "Can you compare it with something I know?"
+3. Live가 연결되면 버튼 없이 그냥 말합니다. 예: "I'm from France and I love Impressionism." Live 연결이 실패하면 **Hold to talk** 버튼이 나타나고 `/api/turn`으로 돌아갑니다.
+4. 모니터나 인쇄물의 작품을 비추고 질문합니다. 예: "What am I looking at?", "Can you compare it with something I know?"
 5. 작품을 알아보면 카메라 위에 **ARTWORK RECOGNIZED** 칩이 뜹니다. 누르면 작품 상세와 쓰인 비교 작품이 나옵니다.
 6. 오른쪽 위 **My visit**에서 이번 관람에서 본 작품과 비교 수를 보고, **END VISIT**으로 관람을 끝냅니다. 서버의 세션도 함께 지워집니다.
 

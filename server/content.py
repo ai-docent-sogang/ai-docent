@@ -33,6 +33,11 @@ def load_comparisons(path=DATA_DIR / "comparisons.csv"):
     return rows
 
 
+def verified_comparisons(comparisons):
+    """검증을 마친(verification_status=verified) 비교쌍만 남긴다. Live와 /api/turn이 같은 기준을 쓴다."""
+    return [c for c in comparisons if c.get("verification_status", "").strip().lower() == "verified"]
+
+
 def profile_terms(profile):
     """국가·익숙한 미술 이름을 소문자로 정규화해 전체 이름과 구성 단어를 수집한다."""
     terms = set()
