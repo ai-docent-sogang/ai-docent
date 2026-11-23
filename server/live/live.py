@@ -5,7 +5,7 @@ push는 버튼으로 발화 경계를 전달하고, handsfree는 연속 음성·
 API 키는 서버에서만 사용하며 음성·프레임은 파일에 저장하지 않는다.
 
 설정: live_config.py / 자막: live_transcript.py / 관람 처리: live_conversation.py
-통신 계약: docs/api.md / 검증: tests/test_live_session_lifetime.py
+통신 계약: docs/api.md / 검증: tests/live/test_live_session_lifetime.py
 """
 
 import asyncio

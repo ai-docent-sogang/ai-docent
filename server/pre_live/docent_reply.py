@@ -26,7 +26,7 @@ class ProfileUpdate(BaseModel):
 class DocentReply(BaseModel):
     """Gemini가 반드시 이 모양의 JSON으로 답하게 한다(response_schema).
 
-    필드를 추가·변경하면 prompts.py의 규칙 설명과 app.py의 응답, docs/api.md도 함께 고친다.
+    필드를 추가·변경하면 prompts.py의 규칙 설명과 pre_live/turn.py의 응답, docs/api.md도 함께 고친다.
     """
 
     transcript: str  # 관람객이 한 말을 받아쓴 영어 문장

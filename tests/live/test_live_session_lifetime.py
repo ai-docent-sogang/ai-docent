@@ -1,7 +1,7 @@
 """Live 중계의 세션 수명 처리 시험. Gemini를 가짜로 바꿔 10분·15분을 기다리지 않고 확인한다.
 
 담당: FE1
-같이 보는 파일: server/live.py (시험 대상), tools/fake_browser_live.py (실제 Gemini로 하는 확인)
+같이 보는 파일: server/live/live.py (시험 대상), tools/live/fake_browser_live.py (실제 Gemini로 하는 확인)
 
 왜 가짜로 하는가:
     연결 수명은 약 10분, 음성 전용 세션은 압축이 없으면 15분이다. 실제로 기다리면 한 번
@@ -314,7 +314,7 @@ check("질문과 답이 대화 기록에 남는다",
       and visit.history[-1]["visitor"] == "Who painted this?"
       and visit.history[-1]["docent"] == "Kim Hong-do painted it.",
       str(visit.history[-1] if visit and visit.history else None))
-# 음성으로 답하므로 어떤 비교를 썼는지 알 수 없다. 추측해서 채우지 않는다(server/live.py 머리말).
+# 음성으로 답하므로 어떤 비교를 썼는지 알 수 없다. 추측해서 채우지 않는다(server/live/live.py 머리말).
 check("쓰지 않은 비교쌍을 기록하지 않는다",
       visit is not None and visit.used_comparison_ids == [],
       str(visit.used_comparison_ids if visit else None))

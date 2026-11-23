@@ -2,11 +2,11 @@
 
 담당: FE1
 같이 보는 파일: tools/compare_modes.py (BE1의 방식 비교, 텍스트 질문만 씀),
-              tools/live_relay_spike.py (브라우저 ↔ 서버 ↔ Gemini 중계 시험대),
+              tools/live/live_relay_spike.py (브라우저 ↔ 서버 ↔ Gemini 중계 시험대),
               docs/FE1/FE1_Live_검토.md (이 도구로 얻은 결과와 판단)
 
 BE1의 compare_modes.py는 Live에 질문을 '텍스트'로 보낸다. 이 도구는 '음성'을 보낸다.
-브라우저 음성 인식(static/stt.js)을 Live의 받아쓰기로 대체할 수 있는지가 FE1의 갈림길이므로,
+브라우저 음성 인식(static/pre_live/stt.js)을 Live의 받아쓰기로 대체할 수 있는지가 FE1의 갈림길이므로,
 실제 음성을 넣었을 때 무엇을 들었고 몇 초에 답이 시작되는지를 직접 재야 한다.
 
 설치: uv sync (websockets는 11/17에 기본 의존성으로 옮겼다)
@@ -14,7 +14,7 @@ BE1의 compare_modes.py는 Live에 질문을 '텍스트'로 보낸다. 이 도�
     say -v Samantha -o /tmp/q.aiff "Who painted this, and why is the boy crying?"
     afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/q.aiff /tmp/q16k.wav
 실행:
-    PYTHONPATH=. uv run python tools/probe_live_audio.py /tmp/q16k.wav gemini-3.8-live KHD_SEODANG
+    PYTHONPATH=. uv run python tools/live/probe_live_audio.py /tmp/q16k.wav gemini-3.8-live KHD_SEODANG
 
 음성은 메모리에서만 다루고 파일로 남기지 않는다(AGENTS.md).
 입력은 16kHz·16bit·모노 PCM, 출력은 24kHz PCM이다(공식 문서 기준, 실제 mime으로 확인함).

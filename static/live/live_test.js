@@ -2,7 +2,7 @@
 //
 // 담당: FE1
 // 같이 보는 파일: live_test.html (화면), live_mic_worklet.js (마이크 16kHz), live_player.js (24kHz 재생),
-//               tools/live_relay_spike.py (중계 서버), docs/FE1/FE1_Live_검토.md
+//               tools/live/live_relay_spike.py (중계 서버), docs/FE1/FE1_Live_검토.md
 //
 // 이 페이지는 Live 전환 가능 여부를 가리기 위한 '시험'이다. 운영 화면이 아니다.
 // 확인하려는 것 네 가지:
@@ -174,7 +174,7 @@ talkBtn.addEventListener("pointerdown", (e) => {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   player.stop(); // 답변이 나오는 중이면 멈춘다(마이크가 그 소리를 되받지 않게)
   // 말의 시작을 서버에 알린다. Live의 자동 음성 감지를 끄고 우리가 경계를 알려 주는 방식이다
-  // (누르고 말하기에는 이 방식을 쓰라고 공식 문서가 안내한다. tools/live_relay_spike.py 참고).
+  // (누르고 말하기에는 이 방식을 쓰라고 공식 문서가 안내한다. tools/live/live_relay_spike.py 참고).
   socket.send(JSON.stringify({ type: "speech_start" }));
   speaking = true;
   firstAudioMs = null;

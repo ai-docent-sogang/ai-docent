@@ -54,7 +54,7 @@
 
 ## POST `/api/ask` — 텍스트 질문·답변 (BE1, 11/11 추가)
 
-FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내는 주소입니다. 세션 없이 작품 한 점 기준으로 답합니다. 코드: `server/ask.py`.
+FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내는 주소입니다. 세션 없이 작품 한 점 기준으로 답합니다. 코드: `server/pre_live/ask.py`.
 
 보내는 값: JSON (`Content-Type: application/json`)
 
@@ -134,6 +134,6 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 | 바꾸는 것 | 함께 고칠 파일 |
 | --- | --- |
 | 보내는 필드 | `server/app.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
-| 받는 필드 | `server/app.py`의 응답, `server/gemini_client.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
+| 받는 필드 | `server/pre_live/turn.py`의 응답, `server/pre_live/docent_reply.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
 | 운영 API의 집계 칸 | `server/visit_stats.py`, `server/admin.py`, `static/admin.js`, 이 문서 |
 | 실시간 음성(Gemini Live API)으로 전환 | 이 문서 전체를 새로 씁니다(역할 가이드 3장의 방식 비교 실험 결과에 따라 결정) |

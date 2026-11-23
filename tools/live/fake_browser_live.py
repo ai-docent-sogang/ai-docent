@@ -1,7 +1,7 @@
 """브라우저 흉내: 서버 WebSocket에 16kHz PCM을 실시간으로 올리고 24kHz PCM과 글자를 받는다.
 
 담당: FE1
-같이 보는 파일: tools/live_relay_spike.py (상대편 서버)
+같이 보는 파일: tools/live/live_relay_spike.py (상대편 서버)
 
 아이폰 Safari 없이 중계 경로를 확인하기 위한 것이다. 폰처럼 100ms씩 실시간으로 보내므로,
 "말이 끝난 뒤 첫 음성까지" 걸린 시간을 관람객 체감에 가깝게 잴 수 있다.
@@ -10,13 +10,13 @@
 실행(시험용 음성은 맥에서 만든다. 실제 관람객 음성을 저장하지 않기 위함이다):
     say -v Samantha -o /tmp/q1.aiff "Who painted this?"
     afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/q1.aiff /tmp/q1.wav
-    PYTHONPATH=. uv run python tools/fake_browser_live.py KHD_SSIREUM /tmp/q1.wav /tmp/q2.wav
+    PYTHONPATH=. uv run python tools/live/fake_browser_live.py KHD_SSIREUM /tmp/q1.wav /tmp/q2.wav
 
 WAV를 여러 개 주면 한 연결에서 연달아 묻는다. 반드시 두 개 이상으로 확인한다. 한 번만 묻는
 시험은 통과하면서 두 번째 질문부터 막히는 결함이 실제로 있었다(11/11, live_relay_spike.py 주석).
 
 handsfree 모드(11/18, 버튼 없는 대화):
-    PYTHONPATH=. uv run python tools/fake_browser_live.py --handsfree --frame=/path/ssireum.jpg \
+    PYTHONPATH=. uv run python tools/live/fake_browser_live.py --handsfree --frame=/path/ssireum.jpg \
         q1.wav q2.wav --port=8091
     버튼 신호를 보내지 않는다. 연결 내내 100ms마다 소리를 보낸다(질문 WAV를 실시간 속도로 흘리고,
     그 밖에는 무음). 사진은 3초마다 보낸다. 먼저 Live의 인사 턴을 받고, 그 뒤 WAV마다 한 턴씩 묻는다.

@@ -1,7 +1,7 @@
 """Live에 사진을 넣어 '지금 보이는 작품'을 함수 호출로 받아 보는 측정 도구.
 
 담당: FE1
-같이 보는 파일: tools/live_relay_spike.py (음성 중계. 프레임 전송을 여기에 더할지 판단하려고 만든 도구),
+같이 보는 파일: tools/live/live_relay_spike.py (음성 중계. 프레임 전송을 여기에 더할지 판단하려고 만든 도구),
               docs/FE1/FE1_관람분석_측정계획.md (체류 판정이 이 결과에 달려 있다),
               docs/FE1/FE1_관람분석_측정계획.md (11/18에 가져갈 숫자)
 
@@ -25,8 +25,8 @@
 
 설치: uv sync (websockets는 11/17에 기본 의존성으로 옮겼다)
 실행:
-    PYTHONPATH=. uv run python tools/live_frame_recognition.py --answers data/eval/recognition_answers.csv
-    PYTHONPATH=. uv run python tools/live_frame_recognition.py --self-test   # 프레임 전송 경로만 확인
+    PYTHONPATH=. uv run python tools/live/live_frame_recognition.py --answers data/eval/recognition_answers.csv
+    PYTHONPATH=. uv run python tools/live/live_frame_recognition.py --self-test   # 프레임 전송 경로만 확인
 """
 import argparse
 import asyncio
@@ -45,7 +45,7 @@ from server.content import load_artworks
 from server.gemini_client import make_client
 
 LIVE_MODEL = os.environ.get("LIVE_MODEL", "gemini-3.8-live")
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 UNKNOWN = "unknown"
 
 # 모델이 답을 말로 하지 않고 이 함수로 돌려주게 한다. Live는 음성으로 답하면서도 함수를 부를 수 있다

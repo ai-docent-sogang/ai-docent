@@ -1,7 +1,7 @@
 // 마이크 소리를 16kHz PCM 조각으로 바꿔 메인 스레드로 넘기는 AudioWorklet.
 //
 // 담당: FE1
-// 같이 보는 파일: live_test.js (이 조각을 WebSocket으로 보냄), tools/live_relay_spike.py (받는 쪽)
+// 같이 보는 파일: live_test.js (이 조각을 WebSocket으로 보냄), tools/live/live_relay_spike.py (받는 쪽)
 //
 // 왜 AudioWorklet인가:
 //   기존 audio.js는 녹음이 끝난 뒤 한 번에 WAV로 바꾼다. Live API는 말하는 동안 계속 보내야 하므로
@@ -14,7 +14,7 @@
 
 const TARGET_RATE = 16000;
 // 한 번에 보낼 샘플 수. 너무 작으면 WebSocket 메시지가 많아지고, 너무 크면 반응이 늦다.
-// 16000 × 0.1초 = 1600 샘플 = 100ms. tools/fake_browser_live.py도 100ms씩 보낸다.
+// 16000 × 0.1초 = 1600 샘플 = 100ms. tools/live/fake_browser_live.py도 100ms씩 보낸다.
 const CHUNK_SAMPLES = 1600;
 
 class MicDownsampler extends AudioWorkletProcessor {

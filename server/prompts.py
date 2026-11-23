@@ -1,7 +1,7 @@
 """도슨트 프롬프트 (담당 BE1, 대화 방식 FE3).
 
 변경 후 서버를 재시작하고 `data/eval/questions.csv`의 동일 질문으로 비교한다.
-`/api/turn`의 응답 필드는 `gemini_client.DocentReply`와 일치시킨다.
+`/api/turn`의 응답 필드는 `pre_live/docent_reply.DocentReply`와 일치시킨다.
 """
 
 # 영어 답변의 문체와 출력 형식을 안정적으로 유지하기 위해 지시문을 영어로 작성한다.

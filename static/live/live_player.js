@@ -1,7 +1,7 @@
 // 서버가 보내는 24kHz PCM 조각을 끊김 없이 이어 재생한다.
 //
 // 담당: FE1
-// 같이 보는 파일: live_test.js (조각을 넘겨줌), tools/live_relay_spike.py (보내는 쪽)
+// 같이 보는 파일: live_test.js (조각을 넘겨줌), tools/live/live_relay_spike.py (보내는 쪽)
 //
 // 왜 따로 필요한가:
 //   기존 audio.js의 speak()는 브라우저 TTS로 '문장'을 읽는다. Live는 완성된 음성 파일이 아니라

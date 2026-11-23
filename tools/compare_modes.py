@@ -1,7 +1,7 @@
 """방식 비교 실험: 요청-응답(지금 방식) vs Gemini Live API(실시간 음성)를 같은 질문 10개로 비교한다.
 
 담당: BE1 (역할 가이드 3장, 11/5–11/11 과제)
-같이 보는 파일: server/ask.py (요청-응답 방식, 같은 작품 자료·지시문을 씀), docs/api.md
+같이 보는 파일: server/pre_live/ask.py (요청-응답 방식, 같은 작품 자료·지시문을 씀), docs/api.md
 
 실행:
     uv run python -m tools.compare_modes            # 두 방식 모두

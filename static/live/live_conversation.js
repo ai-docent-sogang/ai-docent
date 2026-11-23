@@ -4,7 +4,7 @@
 // 같이 보는 파일: app.js (FE2 화면. 이 파일을 열고 닫고, 처음 연결에 실패하면 기존 /api/turn 방식으로 되돌아감),
 //               live_mic_worklet.js (마이크 16kHz PCM), live_player.js (답변 24kHz PCM 재생),
 //               live_test.js (같은 서버와 push 모드로 대화하는 시험 페이지. 아이폰 제약의 근거),
-//               server/live.py (WS /ws/live, T1), 메시지 형식은 '버튼 없는 대화 계약'(2026-11-18)
+//               server/live/live.py (WS /ws/live, T1), 메시지 형식은 '버튼 없는 대화 계약'(2026-11-18)
 //
 // 하는 일:
 //   - WS /ws/live를 열고 첫 메시지로 {mode:"handsfree", session_id, profile}을 보낸다.

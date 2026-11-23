@@ -65,9 +65,9 @@
 브라우저 없이 도는 검사(코드가 깨졌는지 먼저 확인할 때):
 
 ```
-node tests/test_ask.mjs       # /api/ask 요청 형식
+node tests/pre_live/test_ask.mjs       # /api/ask 요청 형식
 node tests/test_app_ask.mjs   # 질문·답변 화면 흐름
-node tests/test_stt.mjs       # 음성 인식 처리
+node tests/pre_live/test_stt.mjs       # 음성 인식 처리
 node tests/test_app_stt.mjs   # 음성 입력 버튼
 ```
 
@@ -80,7 +80,7 @@ node tests/test_app_stt.mjs   # 음성 입력 버튼
 
 ```bash
 uv sync --extra live                                                  # websockets 설치
-PYTHONPATH=. uv run uvicorn --app-dir tools live_relay_spike:app --port 8013
+PYTHONPATH=. uv run uvicorn --app-dir tools/live live_relay_spike:app --port 8013
 cloudflared tunnel --url http://localhost:8013                        # 다른 터미널
 ```
 

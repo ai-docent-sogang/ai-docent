@@ -29,7 +29,7 @@ const viewedArtworks = new Map(); // artwork_id => {title,artist,comparisons:Set
 const MIN_WAV_BYTES = 8000;   // 사진 가로 크기는 live_conversation.js의 FRAME_MAX_WIDTH 하나를 쓴다
 
 // ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
-// 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.
+// 버튼 없는 대화(Live handsfree, static/live/live_conversation.js). START EXPLORING 뒤에 연다.
 // Live가 열리면 Hold to talk 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
 // 처음 연결에 실패하면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다. 도중 끊김·error는
 // live_conversation.js가 END VISIT 전까지 스스로 다시 붙는다(버튼 방식으로 바꾸지 않는다. 글라스를 쓰면 누를 화면이 없다).
