@@ -17,10 +17,24 @@ export const GROUP_NAMES = {
   unclassified: "분류 실패",
 };
 
+/** 연결·품질 기록의 이름. 여기에 없는 값은 기록에 적힌 이름을 그대로 보여 준다. */
+export const QUALITY_NAMES = {
+  reconnect: "다시 연결", resumed: "이어서 재개", interrupted: "끼어들기", phone_closed: "휴대폰 닫음",
+};
+export const END_REASON_NAMES = { visit_ended: "정상 종료" };
+
+/** 분류 실패가 이 비율 이상이면 분류 기준을 점검하라고 알린다. */
+export const UNCLASSIFIED_ALERT = 0.5;
+
 /** 분자/분모를 `4/7 (57%)`로 찍는다. 분모가 0이면 비율을 만들지 않는다. */
 export function ratio(part, whole) {
   if (!whole) return "N/A";
   return `${part}/${whole} (${Math.round((part / whole) * 100)}%)`;
+}
+
+/** 막대에 쓸 백분율(정수). 분모가 0이면 null이라 막대를 그리지 않는다. */
+export function percent(part, whole) {
+  return whole ? Math.round((part / whole) * 100) : null;
 }
 
 /** 로컬 날짜를 `YYYY-MM-DD`로 찍는다. toISOString은 UTC라 한국 00~09시에 어제가 나온다. */
@@ -106,70 +120,125 @@ export async function setOnView(artworkId, onView, fetchImpl = fetch) {
 
 if (typeof document !== "undefined") {
   const $ = (id) => document.getElementById(id);
-  const cell = (text) => `<td>${text}</td>`;
+  const esc = (text) => String(text ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   let stats = null;          // 대시보드가 받아 둔 집계. 라벨 탭이 다시 부르지 않고 이걸 쓴다.
+  let artworksBody = null;   // 켜기/끄기 탭의 마지막 응답. 검색은 이걸 거른다.
 
   const today = new Date();
+  const name = (map, key) => map[key] || key;
+  const chips = (items) => items.map((x) => `<span class="chip">${esc(x)}</span>`).join("");
+
+  function stat(label, value, note) {
+    return `<div class="card stat"><div class="label">${label}</div>
+      <div class="value">${value}</div><div class="note">${note}</div></div>`;
+  }
+
+  function secondsLabel(ms) {
+    return ms === null || ms === undefined ? "N/A" : `${(ms / 1000).toFixed(1)}초`;
+  }
 
   function renderDashboard() {
     if (!stats) return;
     const v = stats.visits;
-    $("summary").innerHTML = `
-      <p>관람 ${v.total}건 (종료 기록 있음 ${v.ended}건, 없음 ${v.no_visit_end}건) ·
-         관람 길이 중앙값 ${seconds(v.duration_s.median)}</p>
-      <p>질문 ${stats.totals.questions}건 · 인식 실패 ${stats.totals.artwork_unknown}건 ·
-         질문 비율 ${ratio(stats.totals.questions, stats.totals.speech_turns)} (조회한 턴 / 말한 턴) ·
-         작품 미정 질문 ${stats.totals.questions_unassigned}건</p>
-      <p>첫 소리까지 중앙값 ${stats.first_audio_ms.median ?? "N/A"}ms
-         (p90 ${stats.first_audio_ms.p90 ?? "N/A"}ms, 못 잰 것 ${stats.first_audio_ms.unmeasured}건)</p>
-      <p class="warn">${stats.first_audio_ms.note}</p>
-      <p class="warn">${stats.note}</p>
-      <p class="note">읽은 파일: ${(stats.range.files || []).join(", ") || "없음"} ·
-         ${stats.range.attribution}</p>`;
-    $("artworks").innerHTML = artworkRows(stats).map((r) => `<tr>
-      ${cell(r.onView ? r.artworkId : `${r.artworkId} <small>(꺼짐)</small>`)}
-      ${cell(r.title)}${cell(r.identifies)}${cell(r.dwells)}${cell(r.revisits)}
-      ${cell(r.openEnded ? `${r.recognized} <small>(하한)</small>` : r.recognized)}
-      ${cell(r.questions)}${cell(r.interest)}${cell(r.noSource)}${cell(r.comparisons)}
-      ${cell(r.tokens)}</tr>`).join("");
-    $("extras").innerHTML = `
-      <p>기록이 없는 작품: ${(stats.artworks_without_records || []).join(", ") || "없음"}</p>
-      <p>작품 간 전환: ${(stats.transitions || []).map((t) => `${t.from}→${t.to} ${t.count}`)
-        .join(", ") || "없음"}</p>
-      <p>관람 순서: ${(stats.sequences || []).map((s) => s.path.join(" → ")).join(" / ") || "없음"}</p>
-      <p>품질: ${Object.entries(stats.quality || {}).map(([k, n]) => `${k} ${n}`).join(", ") || "없음"}</p>
-      <p>종료 이유: ${Object.entries(stats.end_reasons || {}).map(([k, n]) => `${k} ${n}`)
-        .join(", ") || "없음"}</p>
-      ${(stats.warnings || []).length
-        ? `<p class="warn">집계에서 뺀 기록: ${stats.warnings.join(" / ")}</p>` : ""}`;
+    const f = stats.first_audio_ms;
+    const t = stats.totals;
+    $("stats").innerHTML =
+      stat("관람", `${v.total}건`, `종료 기록 ${v.ended}건 · 없음 ${v.no_visit_end}건 · 길이 중앙값 ${seconds(v.duration_s.median) || "N/A"}`) +
+      stat("질문", `${t.questions}건`, `질문 비율 ${ratio(t.questions, t.speech_turns)} (조회한 턴 / 말한 턴)`) +
+      stat("작품 미정 질문", `${t.questions_unassigned}건`, `인식 실패 ${t.artwork_unknown}건`) +
+      stat("첫 소리까지", secondsLabel(f.median),
+           `중앙값 · 느린 경우(p90) ${secondsLabel(f.p90)} · 못 잰 것 ${f.unmeasured}건`);
+    $("notices").innerHTML = [f.note, stats.note].filter(Boolean).map((n) => `<div class="notice">${esc(n)}</div>`).join("") +
+      ((stats.warnings || []).length
+        ? `<div class="notice">집계에서 뺀 기록: ${esc(stats.warnings.join(" / "))}</div>` : "");
+
+    $("artworks").innerHTML = artworks().map((r) => {
+      const share = interestShare(r.entry);
+      const pct = percent(share.part, share.whole);
+      const bar = pct === null ? `<span class="muted">N/A</span>` :
+        `<div class="bar"><div class="track"><div class="fill" style="width:${pct}%"></div></div>
+         <span class="xs">${ratio(share.part, share.whole)}</span></div>`;
+      return `<tr>
+        <td class="title"><div class="name${r.entry.artwork_id ? "" : " none"}">${esc(r.title || r.artworkId)}${
+          r.onView ? "" : ` <small class="muted">(꺼짐)</small>`}</div>
+          ${r.entry.artwork_id ? `<div class="mono xs muted">${esc(r.artworkId)}</div>` : ""}</td>
+        <td class="num">${r.identifies}</td><td class="num">${r.dwells}</td><td class="num">${r.revisits}</td>
+        <td class="num">${r.openEnded ? `${r.recognized} <small class="muted">(하한)</small>` : r.recognized}</td>
+        <td class="num">${r.questions}</td><td>${bar}</td>
+        <td class="num${r.noSource ? " alert" : ""}">${r.noSource}</td>
+        <td class="num">${r.comparisons}</td><td class="num">${r.tokens}</td></tr>`;
+    }).join("");
+
+    const sequences = (stats.sequences || []).map((s) =>
+      `<div class="chips">${s.path.map((id, i) => (i ? `<span>→</span>` : "") + chips([id])).join("")}</div>`).join("");
+    const transitions = (stats.transitions || []).map((x) => `${x.from}→${x.to} ${x.count}`);
+    const unseen = stats.artworks_without_records || [];
+    $("flow").innerHTML = `<h2>관람 흐름</h2>
+      <p class="sub">관람 순서</p>${sequences || `<p class="xs muted">없음</p>`}
+      <p class="sub" style="margin-top:16px">작품 간 전환</p>
+      <div class="chips">${transitions.length ? chips(transitions) : `<span class="muted">없음</span>`}</div>
+      <p class="sub" style="margin-top:16px">아직 아무도 보지 않은 작품 (${unseen.length})</p>
+      <div class="chips">${unseen.length ? chips(unseen) : `<span class="muted">없음</span>`}</div>`;
+
+    const tiles = (counts, names) => Object.entries(counts || {}).map(([k, n]) =>
+      `<div class="tile"><dt>${esc(name(names, k))}</dt><dd>${n}회</dd></div>`).join("");
+    $("health").innerHTML = `<h2>연결 상태</h2>
+      <dl class="tiles">${tiles(stats.quality, QUALITY_NAMES) || `<p class="xs muted">기록 없음</p>`}</dl>
+      <p class="sub" style="margin-top:16px">종료 이유</p>
+      <dl class="tiles">${tiles(stats.end_reasons, END_REASON_NAMES) || `<p class="xs muted">기록 없음</p>`}</dl>
+      <p class="details">읽은 파일 ${esc((stats.range.files || []).join(", ") || "없음")} · ${esc(stats.range.attribution)}</p>`;
+  }
+
+  function artworks() {
+    return artworkRows(stats).map((row, i) => ({ ...row, entry: stats.artworks[i] }));
   }
 
   function renderLabels() {
     if (!stats) return;
     const names = labelNames(stats);
     const groups = stats.totals.groups || {};
-    $("groups").innerHTML = Object.keys(GROUP_NAMES).map((key) =>
-      `<p>${GROUP_NAMES[key]}: ${ratio(groups[key] || 0, stats.totals.questions)}</p>`).join("");
-    $("label-head").innerHTML = `<tr><th>작품</th><th>제목</th>${
-      names.map((n) => `<th>${n}</th>`).join("")}<th>합</th></tr>`;
+    const total = stats.totals.questions;
+    $("groups-title").textContent = `질문 종류 (전체 ${total}건)`;
+    $("groupbar").innerHTML = Object.keys(GROUP_NAMES).map((key) =>
+      `<div class="tone-${key}" style="width:${total ? ((groups[key] || 0) / total) * 100 : 0}%"></div>`).join("");
+    $("groups").innerHTML = Object.keys(GROUP_NAMES).map((key) => {
+      const pct = percent(groups[key] || 0, total);
+      return `<div class="group"><span class="dot tone-${key}"></span><div><div>${GROUP_NAMES[key]}</div>
+        <div class="n">${groups[key] || 0}건 <small>${pct === null ? "N/A" : `(${pct}%)`}</small></div></div></div>`;
+    }).join("");
+    const unclassified = total ? (groups.unclassified || 0) / total : 0;
+    $("label-notice").innerHTML = unclassified >= UNCLASSIFIED_ALERT
+      ? `<div class="notice">질문의 ${percent(groups.unclassified, total)}%가 분류되지 않았습니다. 분류 기준 점검이 필요합니다.</div>` : "";
+    $("label-head").innerHTML = `<tr><th>작품</th>${
+      names.map((n) => `<th class="c">${esc(n)}</th>`).join("")}<th class="c">합</th></tr>`;
     $("label-rows").innerHTML = labelRows(stats, names).map((r) => `<tr>
-      ${cell(r.artworkId)}${cell(r.title)}${r.counts.map(cell).join("")}${cell(r.questions)}
-      </tr>`).join("");
+      <td class="title"><div class="name${r.artworkId.startsWith("(") ? " none" : ""}">${esc(r.title || r.artworkId)}</div></td>
+      ${r.counts.map((n) => `<td class="${n ? "cellN" : "cell0"}">${n || "·"}</td>`).join("")}
+      <td class="cellN">${r.questions}</td></tr>`).join("");
   }
 
   function renderOnView(body) {
+    artworksBody = body;
     $("onview-note").textContent = body.note;
-    $("onview-rows").innerHTML = body.artworks.map((a) => `<tr>
-      ${cell(a.artwork_id)}${cell(a.title_en)}${cell(a.on_view ? "켜짐" : "꺼짐")}
-      <td><button data-id="${a.artwork_id}" data-on="${a.on_view ? "0" : "1"}">${
-        a.on_view ? "끄기" : "켜기"}</button></td></tr>`).join("");
+    const query = $("onview-search").value.trim().toLowerCase();
+    const list = body.artworks.filter((a) => `${a.artwork_id} ${a.title_en}`.toLowerCase().includes(query));
+    const onCount = body.artworks.filter((a) => a.on_view).length;
+    $("count-on").textContent = `켜짐 ${onCount}`;
+    $("count-off").textContent = `꺼짐 ${body.artworks.length - onCount}`;
+    $("onview-rows").innerHTML = list.map((a) => `<li class="${a.on_view ? "" : "off"}">
+      <div class="info"><div class="name">${esc(a.title_en)}</div><div class="mono xs muted">${esc(a.artwork_id)}</div></div>
+      <span class="state">${a.on_view ? "운영 중" : "꺼짐"}</span>
+      <button class="switch" role="switch" aria-checked="${a.on_view}" data-id="${esc(a.artwork_id)}"
+        aria-label="${esc(a.title_en)} ${a.on_view ? "끄기" : "켜기"}"></button></li>`).join("");
     $("onview-rows").querySelectorAll("button").forEach((button) => {
       button.addEventListener("click", async () => {
         button.disabled = true;
         try {
-          renderOnView(await setOnView(button.dataset.id, button.dataset.on === "1"));
+          renderOnView(await setOnView(button.dataset.id, button.getAttribute("aria-checked") !== "true"));
         } catch (error) {
           $("onview-note").textContent = String(error);
+          button.disabled = false;
         }
       });
     });
@@ -189,11 +258,12 @@ if (typeof document !== "undefined") {
     }
   }
 
-  function showTab(name) {
+  function showTab(tab) {
     ["dashboard", "labels", "onview"].forEach((key) => {
-      $(`tab-${key}`).hidden = key !== name;
-      $(`nav-${key}`).classList.toggle("on", key === name);
+      $(`tab-${key}`).hidden = key !== tab;
+      $(`nav-${key}`).classList.toggle("on", key === tab);
     });
+    $("filters").hidden = tab === "onview";   // 기간·자료 종류는 켜기/끄기와 상관없다
   }
 
   window.addEventListener("DOMContentLoaded", async () => {
@@ -202,6 +272,7 @@ if (typeof document !== "undefined") {
     $("nav-labels").addEventListener("click", () => showTab("labels"));
     $("nav-onview").addEventListener("click", () => showTab("onview"));
     $("reload").addEventListener("click", refresh);
+    $("onview-search").addEventListener("input", () => artworksBody && renderOnView(artworksBody));
     showTab("dashboard");
     await refresh();
     try {

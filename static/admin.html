@@ -1,106 +1,239 @@
 <!doctype html>
 <!-- 운영 화면. 담당: FE1. 관람객 화면이 아니다(관람객 화면은 index.html, FE2).
      동작은 admin.js, API는 server/admin.py, 형식은 docs/api.md의 "운영 API" 절.
-     style.css를 쓰지 않는다. 운영 화면과 관람객 화면의 모양을 섞지 않기 위함이다. -->
+     style.css를 쓰지 않는다. 운영 화면과 관람객 화면의 모양을 섞지 않기 위함이다.
+     모양은 ops-design 시안(Lovable)을 따르되 빌드 없이 이 파일 하나의 CSS로 옮겼다.
+     외부 글꼴·스크립트를 불러오지 않는다(관내 망에서도 열려야 한다). -->
 <html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI 도슨트 운영</title>
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; background: #14171a; color: #eceff1;
-                 font: 15px/1.6 -apple-system, system-ui, sans-serif; }
-    main { padding: 16px; max-width: 1100px; margin: 0 auto; }
-    h1 { font-size: 18px; margin: 0 0 2px; }
-    h2 { font-size: 14px; color: #90a4ae; font-weight: normal; margin: 18px 0 6px; }
-    p { margin: 2px 0; }
-    .note { color: #78909c; font-size: 13px; }
-    .warn { color: #ffb74d; font-size: 13px; }
-    nav { display: flex; gap: 6px; margin: 12px 0; flex-wrap: wrap; }
-    nav button { padding: 8px 14px; border: 1px solid #37474f; border-radius: 10px;
-                 background: #1c2227; color: inherit; font-size: 14px; }
-    nav button.on { background: #37474f; border-color: #607d8b; }
-    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
-    input, select, button { font: inherit; border-radius: 8px; border: 1px solid #37474f;
-                            background: #1c2227; color: inherit; padding: 6px 8px; }
-    table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 6px; }
-    th, td { border-bottom: 1px solid #263238; padding: 5px 6px; text-align: left;
-             white-space: nowrap; }
-    th { color: #90a4ae; font-weight: normal; }
-    td small { color: #78909c; }
+    :root {
+      --radius: 8px;
+      --background: oklch(0.19 0.002 106);
+      --foreground: oklch(0.9 0 0);
+      --card: oklch(0.27 0 0);
+      --primary: oklch(0.97 0.17 108);
+      --primary-foreground: oklch(0.19 0 0);
+      --secondary: oklch(0.32 0 0);
+      --muted: oklch(0.23 0 0);
+      --muted-foreground: oklch(0.68 0 0);
+      --destructive: oklch(0.68 0.19 25);
+      --warning: oklch(0.85 0.15 85);
+      --warning-soft: oklch(0.3 0.05 95);
+      --success: oklch(0.75 0.15 150);
+      --success-soft: oklch(0.3 0.05 150);
+      --border: oklch(0.37 0 0);
+      --input: oklch(0.42 0 0);
+      --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; border-color: var(--border); }
+    html, body { margin: 0; background: var(--background); color: var(--foreground);
+                 font: 15px/1.6 Inter, "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
+                 font-feature-settings: "tnum"; color-scheme: dark; }
+    .wrap-page { max-width: 1152px; margin: 0 auto; padding: 0 24px; }
+    header { border-bottom: 1px solid var(--border); }
+    header .wrap-page { padding-top: 24px; }
+    h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 0; line-height: 1.25; }
+    h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+    p { margin: 0; }
+    code { font-family: var(--mono); font-size: 12px; }
+    .sub { margin-top: 4px; font-size: 14px; color: var(--muted-foreground); }
+    .muted { color: var(--muted-foreground); }
+    .xs { font-size: 12px; }
+    .mono { font-family: var(--mono); }
+
+    nav { display: flex; gap: 4px; margin-top: 16px; flex-wrap: wrap; }
+    nav button { padding: 12px 16px; border: 0; border-bottom: 2px solid transparent; background: none;
+                 color: var(--muted-foreground); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+    nav button:hover { color: var(--foreground); }
+    nav button.on { border-bottom-color: var(--primary); color: var(--primary); }
+
+    main.wrap-page { padding-top: 24px; padding-bottom: 48px; display: grid; gap: 24px; }
+    .card { border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+    [hidden] { display: none !important; }
+    .stack { display: grid; gap: 24px; }
+    .pad { padding: 20px; }
+    .card-head { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+
+    .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px; }
+    .controls label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .controls .hint { width: 100%; font-size: 12px; color: var(--muted-foreground); }
+    input, select { font: inherit; font-size: 14px; color: var(--foreground); background: var(--background);
+                    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+    button.primary { margin-left: auto; padding: 8px 16px; border: 0; border-radius: 6px; font: inherit;
+                     font-size: 14px; font-weight: 500; background: var(--primary);
+                     color: var(--primary-foreground); cursor: pointer; }
+    button.primary:hover { opacity: 0.9; }
+    #status { font-size: 12px; color: var(--success); }
+
+    .stats { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .stat { padding: 20px; }
+    .stat .label { font-size: 14px; color: var(--muted-foreground); }
+    .stat .value { margin-top: 8px; font: 500 36px/1.2 var(--mono); color: var(--primary); }
+    .stat .note { margin-top: 4px; font-size: 12px; color: var(--muted-foreground); }
+
+    .notices { display: grid; gap: 8px; }
+    .notice { padding: 12px 16px; border: 1px solid oklch(0.85 0.15 85 / 0.3); border-radius: 8px;
+              background: var(--warning-soft); color: var(--warning); font-size: 14px; }
+
     .wrap { overflow-x: auto; }
-    #status { color: #80cbc4; font-size: 13px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    thead { background: var(--muted); }
+    th { padding: 12px; text-align: left; font-size: 12px; font-weight: 500; color: var(--muted-foreground);
+         white-space: nowrap; }
+    td { padding: 12px; border-top: 1px solid var(--border); vertical-align: top; }
+    th:first-child, td:first-child { padding-left: 20px; }
+    th:last-child, td:last-child { padding-right: 20px; }
+    .num { text-align: right; white-space: nowrap; }
+    td.title { min-width: 220px; max-width: 360px; }
+    td.title .name { font-weight: 500; }
+    td.title .none { color: var(--muted-foreground); }
+    td.alert { color: var(--destructive); font-weight: 600; }
+    .bar { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .bar .track { width: 80px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--muted); }
+    .bar .fill { height: 100%; background: var(--primary); }
+
+    .two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .two h2 + p { margin-top: 12px; }
+    .chips { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+    .chip { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--secondary);
+            font-family: var(--mono); }
+    .tiles { margin-top: 12px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .tile { padding: 8px 12px; border-radius: 8px; background: var(--muted); }
+    .tile dt { font-size: 12px; color: var(--muted-foreground); }
+    .tile dd { margin: 0; font-size: 18px; font-weight: 600; }
+    .details { margin-top: 16px; font-size: 12px; color: var(--muted-foreground); }
+
+    .groupbar { margin-top: 16px; display: flex; height: 16px; overflow: hidden; border-radius: 8px; background: var(--muted); }
+    .groups { margin-top: 16px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .group { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; background: var(--muted); }
+    .group .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .group .n { font-weight: 600; }
+    .group .n small { font-size: 12px; font-weight: 400; color: var(--muted-foreground); }
+    .tone-interest { background: var(--success); }
+    .tone-control { background: var(--primary); }
+    .tone-unclassified { background: var(--warning); }
+    .cell0 { color: oklch(0.68 0 0 / 0.5); text-align: center; }
+    .cellN { color: var(--primary); font-weight: 600; text-align: center; }
+    th.c { text-align: center; }
+
+    .onview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 20px;
+                   border-bottom: 1px solid var(--border); }
+    .pill { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--muted);
+            color: var(--muted-foreground); }
+    .pill.on { background: var(--success-soft); color: var(--success); }
+    #onview-search { margin-left: auto; width: 256px; max-width: 100%; }
+    ul.onview { list-style: none; margin: 0; padding: 0; }
+    ul.onview li { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--border); }
+    ul.onview li:first-child { border-top: 0; }
+    ul.onview li.off { background: oklch(0.23 0 0 / 0.6); }
+    ul.onview .info { min-width: 0; flex: 1; }
+    ul.onview .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    ul.onview li.off .name { color: var(--muted-foreground); text-decoration: line-through; }
+    ul.onview .state { font-size: 12px; font-weight: 500; color: var(--success); }
+    ul.onview li.off .state { color: var(--muted-foreground); }
+    .switch { position: relative; width: 48px; height: 28px; flex: none; border: 0; border-radius: 999px;
+              background: var(--input); cursor: pointer; transition: background .15s; padding: 0; }
+    .switch::after { content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px;
+                     border-radius: 50%; background: var(--card); box-shadow: 0 1px 2px #0006; transition: left .15s; }
+    .switch[aria-checked="true"] { background: var(--success); }
+    .switch[aria-checked="true"]::after { left: 24px; }
+    .switch:disabled { opacity: .5; cursor: wait; }
+    .switch:focus-visible, nav button:focus-visible, button.primary:focus-visible, input:focus-visible,
+    select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   </style>
 </head>
 <body>
-<main>
-  <h1>AI 도슨트 운영</h1>
-  <p class="note">운영자용 화면입니다. 인증이 없으므로 공개 주소로 서버를 열 때는 쓰지 않습니다.</p>
+<header>
+  <div class="wrap-page">
+    <h1>AI 도슨트 운영</h1>
+    <p class="sub">관내 운영자용 화면입니다 · 인증이 없으므로 공개 주소로 서버를 열 때는 쓰지 않습니다</p>
+    <nav>
+      <button id="nav-dashboard" type="button">대시보드</button>
+      <button id="nav-labels" type="button">질문 분류</button>
+      <button id="nav-onview" type="button">작품 켜기/끄기</button>
+    </nav>
+  </div>
+</header>
 
-  <nav>
-    <button id="nav-dashboard" type="button">대시보드</button>
-    <button id="nav-labels" type="button">질문 라벨</button>
-    <button id="nav-onview" type="button">작품 켜기/끄기</button>
-  </nav>
-
-  <div class="controls">
-    <label>기간 <input id="from" type="date"></label>
-    <label>– <input id="to" type="date"></label>
-    <label>자료
+<main class="wrap-page">
+  <div class="controls card" id="filters">
+    <label><span class="muted">기간</span> <input id="from" type="date"> <span>~</span> <input id="to" type="date"></label>
+    <label><span class="muted">자료</span>
       <select id="kind">
-        <option value="team_rehearsal">team_rehearsal</option>
-        <option value="team_shoot">team_shoot</option>
-        <option value="mock">mock</option>
-        <option value="visitor">visitor</option>
+        <option value="team_rehearsal">팀 모의 운영 (team_rehearsal)</option>
+        <option value="team_shoot">팀 촬영 (team_shoot)</option>
+        <option value="mock">가짜 자료 (mock)</option>
+        <option value="visitor">실제 관람객 (visitor)</option>
       </select>
     </label>
-    <button id="reload" type="button">다시 불러오기</button>
+    <button class="primary" id="reload" type="button">새로고침</button>
     <span id="status"></span>
+    <p class="hint">자료 종류는 한 번에 하나만 봅니다. 모의와 실측을 합산하지 않기로 11/16에 정했습니다.</p>
   </div>
-  <p class="note">자료 종류는 한 번에 하나만 봅니다. 모의와 실측을 합산하지 않기로 11/16에 정했습니다.</p>
 
-  <section id="tab-dashboard">
-    <h2>요약</h2>
-    <div id="summary"></div>
-    <h2>작품별</h2>
-    <div class="wrap">
-      <table>
-        <thead><tr>
-          <th>작품</th><th>제목</th><th>인식 보고</th><th>구간</th><th>재방문</th>
-          <th>인식 구간(체류 아님)</th><th>질문</th><th>작품 관심</th><th>근거 없음</th>
-          <th>비교</th><th>토큰</th>
-        </tr></thead>
-        <tbody id="artworks"></tbody>
-      </table>
+  <section id="tab-dashboard" class="stack">
+    <div class="stats" id="stats"></div>
+    <div class="notices" id="notices"></div>
+
+    <div class="card">
+      <div class="card-head"><h2>작품별 현황</h2></div>
+      <div class="wrap">
+        <table>
+          <thead><tr>
+            <th>작품</th><th class="num">인식 보고</th><th class="num">구간</th><th class="num">재방문</th>
+            <th class="num">인식 구간(체류 아님)</th><th class="num">질문</th><th>작품 관심 비율</th>
+            <th class="num">근거 없음</th><th class="num">비교</th><th class="num">토큰</th>
+          </tr></thead>
+          <tbody id="artworks"></tbody>
+        </table>
+      </div>
     </div>
-    <h2>그 밖</h2>
-    <div id="extras"></div>
-  </section>
 
-  <section id="tab-labels" hidden>
-    <h2>덩이별 질문</h2>
-    <div id="groups"></div>
-    <h2>원라벨 10개 × 작품</h2>
-    <p class="note">기록에는 원라벨이 그대로 남습니다. 대시보드는 세 덩이로 모아 보여 줍니다.</p>
-    <div class="wrap">
-      <table>
-        <thead id="label-head"></thead>
-        <tbody id="label-rows"></tbody>
-      </table>
+    <div class="two">
+      <div class="card pad" id="flow"></div>
+      <div class="card pad" id="health"></div>
     </div>
   </section>
 
-  <section id="tab-onview" hidden>
-    <h2>작품 켜기/끄기</h2>
-    <p class="warn" id="onview-note"></p>
-    <p class="note">끈 작품은 도슨트가 알아보지 못하고 그 작품의 비교쌍도 빠집니다.
-       <code>data/artworks.csv</code>의 <code>on_view_status</code>(현장 확인 상태)와는 다른 값입니다.</p>
-    <div class="wrap">
-      <table>
-        <thead><tr><th>작품</th><th>제목</th><th>지금</th><th></th></tr></thead>
-        <tbody id="onview-rows"></tbody>
-      </table>
+  <section id="tab-labels" class="stack" hidden>
+    <div class="card pad">
+      <h2 id="groups-title">질문 종류</h2>
+      <div class="groupbar" id="groupbar"></div>
+      <div class="groups" id="groups"></div>
+      <div class="notices" id="label-notice" style="margin-top:16px"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>작품별 세부 분류</h2>
+        <p class="xs muted">기록에는 세부 분류가 그대로 남고, 위 요약은 세 묶음으로 모아 보여 줍니다.</p>
+      </div>
+      <div class="wrap">
+        <table>
+          <thead id="label-head"></thead>
+          <tbody id="label-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-onview" class="stack" hidden>
+    <div class="notices"><div class="notice" id="onview-note"></div></div>
+    <div class="card">
+      <div class="onview-head">
+        <div>
+          <h2>작품 켜기/끄기</h2>
+          <p class="xs muted">끈 작품은 도슨트가 알아보지 못하고 비교 설명에서도 빠집니다.
+             <code>data/artworks.csv</code>의 <code>on_view_status</code>(현장 확인 상태)와는 다른 값입니다.</p>
+        </div>
+        <span class="pill on" id="count-on" style="margin-left:auto"></span>
+        <span class="pill" id="count-off"></span>
+        <input id="onview-search" type="search" placeholder="작품 이름 검색" aria-label="작품 이름 검색">
+      </div>
+      <ul class="onview" id="onview-rows"></ul>
     </div>
   </section>
 </main>
