@@ -20,8 +20,13 @@ export const GROUP_NAMES = {
 /** 연결·품질 기록의 이름. 여기에 없는 값은 기록에 적힌 이름을 그대로 보여 준다. */
 export const QUALITY_NAMES = {
   reconnect: "다시 연결", resumed: "이어서 재개", interrupted: "끼어들기", phone_closed: "휴대폰 닫음",
+  replaced: "다른 기기로 교체",
 };
-export const END_REASON_NAMES = { visit_ended: "정상 종료" };
+export const END_REASON_NAMES = { visit_ended: "정상 종료", expired: "방치로 만료" };
+
+/** 관람 흐름 카드에 보여 줄 최대 개수. 관람이 늘면 목록이 끝없이 길어지므로 앞쪽만 보이고 나머지는 개수로 알린다. */
+export const MAX_SEQUENCES = 6;
+export const MAX_TRANSITIONS = 10;
 
 /** 분류 실패가 이 비율 이상이면 분류 기준을 점검하라고 알린다. */
 export const UNCLASSIFIED_ALERT = 0.5;
@@ -170,14 +175,19 @@ if (typeof document !== "undefined") {
         <td class="num">${r.comparisons}</td><td class="num">${r.tokens}</td></tr>`;
     }).join("");
 
-    const sequences = (stats.sequences || []).map((s) =>
-      `<div class="chips">${s.path.map((id, i) => (i ? `<span>→</span>` : "") + chips([id])).join("")}</div>`).join("");
-    const transitions = (stats.transitions || []).map((x) => `${x.from}→${x.to} ${x.count}`);
+    const allSequences = stats.sequences || [];
+    const sequences = allSequences.slice(0, MAX_SEQUENCES).map((s) =>
+      `<div class="chips">${s.path.map((id, i) => (i ? `<span>→</span>` : "") + chips([id])).join("")}</div>`).join("") +
+      (allSequences.length > MAX_SEQUENCES ? `<p class="xs muted">외 ${allSequences.length - MAX_SEQUENCES}건</p>` : "");
+    const allTransitions = (stats.transitions || []).map((x) => `${x.from}→${x.to} ${x.count}`);
+    const transitions = allTransitions.slice(0, MAX_TRANSITIONS);
+    const moreTransitions = allTransitions.length - transitions.length;
     const unseen = stats.artworks_without_records || [];
     $("flow").innerHTML = `<h2>관람 흐름</h2>
       <p class="sub">관람 순서</p>${sequences || `<p class="xs muted">없음</p>`}
       <p class="sub" style="margin-top:16px">작품 간 전환</p>
-      <div class="chips">${transitions.length ? chips(transitions) : `<span class="muted">없음</span>`}</div>
+      <div class="chips">${transitions.length ? chips(transitions) : `<span class="muted">없음</span>`}${
+        moreTransitions > 0 ? `<span class="muted">외 ${moreTransitions}개</span>` : ""}</div>
       <p class="sub" style="margin-top:16px">아직 아무도 보지 않은 작품 (${unseen.length})</p>
       <div class="chips">${unseen.length ? chips(unseen) : `<span class="muted">없음</span>`}</div>`;
 
