@@ -4,7 +4,7 @@
 새로 시작됐기 때문이다. 그러면 운영 페이지의 모든 비율이 분모부터 틀린다.
 
 pytest로는 수집되지 않는다. 이렇게 돌린다:
-    PYTHONPATH=. uv run python tests/test_visit_identity.py
+    PYTHONPATH=. uv run python tests/live/test_visit_identity.py
 
 Gemini를 부르지 않는다. `visit_log.start()`가 Gemini에 붙기 전에 불리므로 WebSocket을
 열고 바로 닫기만 하면 기록이 남는다.
@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
 

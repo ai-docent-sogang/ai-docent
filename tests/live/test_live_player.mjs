@@ -1,7 +1,7 @@
 // live_player.js의 24kHz PCM 이어 재생을 브라우저 없이 확인한다.
 //
 // 담당: FE1
-// 실행: node tests/test_live_player.mjs
+// 실행: node tests/live/test_live_player.mjs
 // 확인하는 것: 조각이 앞 조각 끝에 정확히 붙어 예약되는지(겹치거나 벌어지면 소리가 끊긴다),
 //              늦게 도착한 조각도 겹치지 않는지, stop()이 예약까지 취소하는지, 값 변환이 맞는지.
 import assert from "node:assert";
@@ -33,7 +33,7 @@ class FakeContext {
 
 globalThis.window = { AudioContext: FakeContext };
 
-const { createPlayer } = await import(new URL("../static/live_player.js", import.meta.url));
+const { createPlayer } = await import(new URL("../../static/live/live_player.js", import.meta.url));
 const player = createPlayer();
 
 const info = await player.start();

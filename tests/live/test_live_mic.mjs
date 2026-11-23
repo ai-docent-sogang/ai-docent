@@ -1,7 +1,7 @@
 // live_mic_worklet.js의 16kHz 변환을 브라우저 없이 확인한다.
 //
 // 담당: FE1
-// 실행: node tests/test_live_mic.mjs
+// 실행: node tests/live/test_live_mic.mjs
 // 확인하는 것: 마이크 샘플레이트가 무엇이든 16kHz로 나오는지, 조각 경계에서 샘플이 밀리거나
 //              겹치지 않는지(길게 돌려도 누적 오차가 생기지 않는지), 조각 크기와 값 변환이 맞는지.
 //
@@ -16,7 +16,7 @@ globalThis.AudioWorkletProcessor = class { constructor() { this.port = { postMes
 async function loadWithRate(rate) {
   globalThis.sampleRate = rate;
   // 캐시를 피해 매번 새로 읽는다(모듈 평가 시점에 sampleRate를 읽지는 않지만, 인스턴스를 깨끗이 쓰기 위함)
-  await import(`${new URL("../static/live_mic_worklet.js", import.meta.url)}?rate=${rate}`);
+  await import(`${new URL("../../static/live/live_mic_worklet.js", import.meta.url)}?rate=${rate}`);
   const node = new Processor.cls();
   const chunks = [];
   node.port = { postMessage: (data) => chunks.push(data) };

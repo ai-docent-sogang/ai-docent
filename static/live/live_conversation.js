@@ -100,7 +100,7 @@ function createWorkletMic() {
       if (!window.AudioWorklet || !ctx) throw new Error("AudioWorklet unavailable");
       if (!stream?.getAudioTracks?.()[0]) throw new Error("no microphone track");
       if (ctx.state === "suspended") await ctx.resume();
-      await ctx.audioWorklet.addModule("/static/live_mic_worklet.js");
+      await ctx.audioWorklet.addModule("/static/live/live_mic_worklet.js");
       node = new AudioWorkletNode(ctx, "mic-downsampler");
       node.port.onmessage = (event) => onChunk(event.data);
       connectTrack(stream);

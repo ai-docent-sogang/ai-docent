@@ -1,7 +1,7 @@
 // live_conversation.js(버튼 없는 Live 대화)를 서버·브라우저 없이 확인한다.
 //
 // 담당: FE1
-// 실행: node tests/test_live_conversation.mjs
+// 실행: node tests/live/test_live_conversation.mjs
 // 확인하는 것: 첫 메시지 형식(mode·session_id·profile), ready 뒤에만 마이크 PCM 전송·음소거(무음 600ms),
 //              heard/said 조각 이어 붙이기와 turn_complete에서 끊기, interrupted에서 재생 즉시 멈춤,
 //              artwork/comparison 전달, 3초 주기 사진 전송, 글 질문, ready 뒤 끊김·error에서 자동 재연결
@@ -12,7 +12,7 @@
 import assert from "node:assert";
 
 const { createLiveConversation, createWakeLock, createVisitStore, continueSavedVisit, FRAME_INTERVAL_MS, PING_INTERVAL_MS } = await import(
-  new URL("../static/live_conversation.js", import.meta.url)
+  new URL("../../static/live/live_conversation.js", import.meta.url)
 );
 
 // ── 가짜들 ──────────────────────────────────────────────────────────────────────

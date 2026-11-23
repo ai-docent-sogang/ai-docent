@@ -13,7 +13,7 @@
 //
 // 화면에 뜨는 값은 모두 측정값이거나 브라우저가 알려 준 값이다. 추정해서 쓰지 않는다.
 
-import { ARTWORKS, DEFAULT_ARTWORK_ID } from "./config.js";
+import { ARTWORKS, DEFAULT_ARTWORK_ID } from "../config.js";
 import { createPlayer } from "./live_player.js";
 
 const $ = (id) => document.getElementById(id);
@@ -75,7 +75,7 @@ $("connect").addEventListener("click", async () => {
     });
     micCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (micCtx.state === "suspended") await micCtx.resume();
-    await micCtx.audioWorklet.addModule("/static/live_mic_worklet.js");
+    await micCtx.audioWorklet.addModule("/static/live/live_mic_worklet.js");
     log(`마이크 준비: ${micCtx.sampleRate} Hz`, "ok");
 
     workletNode = new AudioWorkletNode(micCtx, "mic-downsampler");

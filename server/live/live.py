@@ -131,7 +131,7 @@ def live_test_page():
 
     아이폰 Safari에서 마이크 16kHz 전송과 24kHz 재생이 되는지 확인하는 데 쓴다.
     """
-    return FileResponse(STATIC_DIR / "live_test.html")
+    return FileResponse(STATIC_DIR / "live" / "live_test.html")
 
 
 async def send_silence(session):

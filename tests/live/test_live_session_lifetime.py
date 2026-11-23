@@ -13,7 +13,7 @@
     - 재개 핸들로 다시 붙은 뒤 실제로 대화가 이어지는지
     - 실제 GoAway가 연결 종료 몇 초 전에 오는지
 
-실행: PYTHONPATH=. uv run python tests/test_live_session_lifetime.py
+실행: PYTHONPATH=. uv run python tests/live/test_live_session_lifetime.py
 """
 import asyncio
 import base64
@@ -908,7 +908,7 @@ rows, raw, _ = visit_log_run(LIVE_VISIT_LOG="team", LIVE_VISIT_SOURCE_KIND="team
                              LIVE_VISIT_SEASON="2026-가을", LIVE_VISIT_GALLERY="서화실")
 kinds = [r["event"] for r in rows]
 # 폰 연결이 끊긴 것은 관람이 끝난 것이 아니다. 기록은 열린 채로 다시 붙는 폰을 기다리고,
-# END VISIT이나 만료 때 visit_end로 닫힌다(tests/test_visit_identity.py).
+# END VISIT이나 만료 때 visit_end로 닫힌다(tests/live/test_visit_identity.py).
 check("관람 기록은 visit_start로 시작하고 연결이 끊겨도 닫히지 않는다",
       kinds[:1] == ["visit_start"] and "visit_end" not in kinds, str(kinds))
 check("작품 인식이 남는다", any(r["event"] == "artwork_identified" and r["artwork_id"] == ARTWORK

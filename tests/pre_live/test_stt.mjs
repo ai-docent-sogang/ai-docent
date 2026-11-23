@@ -1,7 +1,7 @@
 // stt.js(브라우저 음성 인식)를 가짜 SpeechRecognition으로 확인한다. 브라우저 없이 돌아간다.
 //
 // 담당: FE1
-// 실행: node tests/test_stt.mjs
+// 실행: node tests/pre_live/test_stt.mjs
 // 확인하는 것: 중간·최종 결과 전달, 말이 없을 때 no-speech, 일부러 멈춘 aborted는 오류가 아님,
 //              지원하지 않는 브라우저에서 unsupported, 인식기가 한 번에 하나만 도는지.
 import assert from "node:assert";
@@ -19,7 +19,7 @@ class FakeRecognition {
 const result = (transcript, isFinal) => Object.assign([{ transcript }], { isFinal });
 
 globalThis.window = { SpeechRecognition: FakeRecognition };
-const { isSupported, listen, stopListening } = await import(new URL("../static/stt.js", import.meta.url));
+const { isSupported, listen, stopListening } = await import(new URL("../../static/pre_live/stt.js", import.meta.url));
 
 assert.equal(isSupported(), true);
 
@@ -74,7 +74,7 @@ assert.equal(made.at(-1).stopped, true);
 // ⑤ 지원하지 않는 브라우저
 const errs = [];
 globalThis.window = {}; // SpeechRecognition 없음
-const fresh = await import(`${new URL("../static/stt.js", import.meta.url)}?nosupport`);
+const fresh = await import(`${new URL("../../static/pre_live/stt.js", import.meta.url)}?nosupport`);
 assert.equal(fresh.isSupported(), false);
 fresh.listen({ onError: (c) => errs.push(c), onEnd: () => {} });
 assert.deepEqual(errs, ["unsupported"]);

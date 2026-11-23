@@ -4,7 +4,7 @@
 이 파일은 그 기준을 바꿀 때 기대를 고정하는 자리다.
 
 pytest로는 수집되지 않는다. 이렇게 돌린다:
-    PYTHONPATH=. uv run python tests/test_question_turn.py
+    PYTHONPATH=. uv run python tests/live/test_question_turn.py
 
 Gemini와 서버를 부르지 않는다. LiveConversation의 메서드를 직접 부른다.
 """
@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
 
