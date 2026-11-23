@@ -7,9 +7,8 @@ import asyncio
 import time
 from types import SimpleNamespace
 
-from .ask import build_artwork_context
 from . import session as sessions
-from .content import rank_comparisons
+from .content import build_artwork_context, rank_comparisons
 from . import live_config
 from .live_config import UNKNOWN
 from .live_context import MAX_COMPARISON_OPTIONS, REGION_TAGS, comparison_block, home_of

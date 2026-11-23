@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from google.genai import types
 from pydantic import BaseModel
 
+from .content import build_artwork_context
 from .prompts import ASK_INSTRUCTION
 
 router = APIRouter()
@@ -36,22 +37,6 @@ class AskResponse(BaseModel):
     source_url: str
     latency_ms: int
     model: str = ""
-
-
-def build_artwork_context(art):
-    """텍스트 질의와 Live에서 공유하는 작품 근거를 구성한다.
-
-    보물·국보와 화폭·인물 의상의 혼동을 줄이도록 지정 등급과 화폭 재질을 명시한다
-    (11/11 방식 비교 Q03·Q07).
-    """
-    facts = "\n".join(f"- {fact}" for fact in art["key_facts"])
-    designation = art.get("designation") or "none recorded"
-    return (
-        f"ARTWORK: {art['title_en']}\n"
-        f"Artist: {art['artist']}\nDate: {art['date']}\n"
-        f"Painting surface: {art['medium']}\nDesignation: {designation}\n"
-        f"FACTS (the only facts you may use):\n{facts}"
-    )
 
 
 DEFAULT_FALLBACK_MODELS = "gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite"

@@ -22,8 +22,7 @@ from google.genai import types
 from google.genai.errors import APIError
 
 from . import session as sessions
-from .ask import build_artwork_context
-from .content import load_artworks, load_comparisons
+from .content import build_artwork_context, load_artworks, load_comparisons
 from .gemini_client import make_client
 from . import live_config as settings
 from . import on_view

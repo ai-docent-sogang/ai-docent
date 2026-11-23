@@ -5,8 +5,7 @@
 
 import sys
 
-from .ask import build_artwork_context
-from .content import load_artworks, load_comparisons, rank_comparisons
+from .content import build_artwork_context, load_artworks, load_comparisons, rank_comparisons
 from .prompts import LIVE_INSTRUCTION
 
 # 화면의 지역·국가 값을 `data/comparisons.csv`의 profile_tags에 맞춘다.

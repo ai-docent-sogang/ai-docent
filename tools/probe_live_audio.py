@@ -21,8 +21,7 @@ BE1의 compare_modes.py는 Live에 질문을 '텍스트'로 보낸다. 이 도�
 """
 import asyncio, sys, time, wave
 from google.genai import types
-from server.ask import build_artwork_context
-from server.content import load_artworks
+from server.content import build_artwork_context, load_artworks
 from server.gemini_client import make_client
 from server.prompts import ASK_INSTRUCTION
 
