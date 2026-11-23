@@ -10,7 +10,7 @@
 
 ## 어떻게 측정했나
 
-- 질문: BE1의 방식 비교와 **같은 10개**(`data/eval/mode_comparison.csv`의 Q01~Q10). 비교 가능하게 하려고 같은 세트를 썼다.
+- 질문: BE1의 방식 비교와 **같은 10개**(`archive/data/eval/mode_comparison.csv`의 Q01~Q10). 비교 가능하게 하려고 같은 세트를 썼다.
 - 경로: 로컬 서버 `POST /api/ask`, 실제 Gemini 호출(`ASK_MOCK` 없음), `.env`의 `GEMINI_MODEL` = `gemini-3.8-flash`.
 - `server_ms`: 서버가 응답에 담아 준 `latency_ms`(요청을 받고 답변을 만들기까지).
 - `client_ms`: 요청을 보낸 쪽에서 잰 왕복 시간.

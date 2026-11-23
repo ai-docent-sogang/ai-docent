@@ -15,7 +15,7 @@
 
 `archive`는 당시 측정 방식을 확인하기 위한 원본이다. 입력 위치를 스크립트 옆 `stt/`로 가정한다. Live 원본은 음성을 일괄 전송하므로 현재 실시간 전송 시험과 시간 값을 직접 비교하지 않는다.
 
-서버 중계 시험 코드는 [`tools/live/live_relay_spike.py`](../../tools/live/live_relay_spike.py), 단일 음성 확인은 [`tools/live/probe_live_audio.py`](../../tools/live/probe_live_audio.py), 브라우저 모의 클라이언트는 [`tools/live/fake_browser_live.py`](../../tools/live/fake_browser_live.py)에 있다.
+서버 중계 시험 코드는 [`tools/live/live_relay_spike.py`](../../../tools/live/live_relay_spike.py), 단일 음성 확인은 [`tools/live/probe_live_audio.py`](../../tools/live/probe_live_audio.py), 브라우저 모의 클라이언트는 [`tools/live/fake_browser_live.py`](../../../tools/live/fake_browser_live.py)에 있다.
 
 ## 합성 입력 생성하기
 

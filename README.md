@@ -19,6 +19,7 @@
 
 - **`live/`**: Live 실시간 음성(WebSocket `/ws/live`). 본선입니다.
 - **`pre_live/`**: Live 이전의 요청·응답 방식(`POST /api/turn`, `POST /api/ask`, 브라우저 STT·TTS). Live가 끊길 때의 대체 경로이기도 합니다.
+- **`archive/`**: 끝난 실험(음성·방식 비교)과 날짜가 지난 문서입니다. 지금 운영·분석에는 쓰지 않으므로 평소에는 열지 않아도 됩니다. 무엇을 왜 옮겼는지는 [`archive/README.md`](archive/README.md)에 있습니다.
 - 두 폴더 밖에 있는 파일은 두 방식이 함께 쓰거나(`content.py`, `session.py`, `gemini_client.py`의 `make_client`), 대화 방식과 상관없는 것(인식, 관람 기록, 운영 화면)입니다.
 
 `server/`, `static/`, `tests/`, `tools/`가 모두 같은 이름의 하위 폴더 `live/`·`pre_live/`를 가집니다. 방식 하나만 보려면 그 폴더 넷만 열면 됩니다.
@@ -31,7 +32,7 @@ ai-docent/  (저장소 최상위)
 │   ├── 개발계획서.md, 역할_가이드.md, 진행상황.md, 시연_체크리스트.md
 │   ├── api.md             서버와 앱이 주고받는 형식 (BE1·FE1)
 │   ├── 11-18_통합_인터페이스.md   11/18 전달본에서 각자 내보내는 형식
-│   ├── meeting/           회의록, 작업 안내, 요청 문서
+│   ├── meeting/           지금 유효한 작업 안내(11/19). 지난 회의록·안내·요청은 archive/docs/meeting/
 │   └── FE1/               FE1 측정·검토 기록 (음성, 응답 시간, Live, 아이폰 시험, 관람 분석과 모의 데이터)
 ├── server/      Python 서버
 │   ├── app.py            라우터 연결, 세션 시작·끝(/api/session), 첫 화면 (BE1)
@@ -71,8 +72,7 @@ ai-docent/  (저장소 최상위)
 │   ├── kb/               e뮤지엄 해설 DB
 │   └── incoming/         Drive에서 받은 원본 이미지·해설 (git 제외)
 ├── tools/       검사·측정·DB 만들기 도구 (담당은 파일마다 다름)
-│   ├── live/             [Live] live_relay_spike.py(중계 시험대, 포트 8013), fake_browser_live.py, probe_live_audio.py, live_frame_recognition.py (FE1)
-│   ├── compare_modes.py  요청-응답 vs Live 비교 실험. 두 방식을 함께 다룸 (BE1)
+│   ├── live/             [Live] live_relay_spike.py(중계 시험대, 포트 8013), fake_browser_live.py, live_frame_recognition.py (FE1)
 │   ├── build_manifest.py, build_index.py, emuseum_page.py, make_answer_sheet.py
 │   │                     이미지 목록표·벡터·인식 정답표 (BE2)
 │   ├── check_content.py, eval_recognition.py
@@ -84,7 +84,7 @@ ai-docent/  (저장소 최상위)
 │   ├── pre_live/         [Live 이전] test_ask.mjs(/api/ask 요청), test_stt.mjs(음성 인식 처리)
 │   └── sandbox.py, test_admin_*, test_on_view.py, test_visit_log.py, test_visit_stats.py
 │                         공통·운영·기록 시험
-├── experiments/voice/    음성 비교 실험 코드와 기록 (FE1)
+├── archive/     끝난 실험과 지난 문서. 지금 운영·분석에는 쓰지 않는다. 원래 경로를 그대로 따라 둠 (archive/README.md)
 └── .github/rulesets/     main 브랜치 보호 규칙
 ```
 
@@ -102,6 +102,9 @@ ai-docent/  (저장소 최상위)
 | `tools/live_relay_spike.py` 등 Live 도구 4개 | `tools/live/` |
 | `tests/test_live_*`, `test_question_turn`, `test_visit_identity` | `tests/live/` |
 | `tests/test_ask.mjs`, `tests/test_stt.mjs` | `tests/pre_live/` |
+| `experiments/voice/`, `tools/compare_modes.py`, `tools/live/probe_live_audio.py` | `archive/` 아래 같은 경로 (11/23 두 번째 정리) |
+| `data/eval/mode_comparison*.csv`, `data/eval/voice_*.json` | `archive/data/eval/` |
+| `docs/meeting/`의 11/11 회의록·11/12 안내·11/16 요청, `docs/FE1/FE1_음성_실험_2026-11-11.md` | `archive/docs/` 아래 같은 경로 |
 
 각 파일 맨 위 주석에 담당, 하는 일, 같이 보는 파일이 적혀 있습니다.
 
