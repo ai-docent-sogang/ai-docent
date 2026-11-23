@@ -30,8 +30,8 @@ const MIN_WAV_BYTES = 8000;   // 사진 가로 크기는 live_conversation.js의
 
 // ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
 // 버튼 없는 대화(Live handsfree, static/live/live_conversation.js). START EXPLORING 뒤에 연다.
-// Live가 열리면 Hold to talk 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
-// 처음 연결에 실패하면 live=null로 두고 아래 기존 /api/turn 버튼 방식을 그대로 쓴다. 도중 끊김·error는
+// Live가 열리면 마이크 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
+// 처음 연결에 실패하면 live=null로 두고 /api/turn 탭 녹음으로 전환한다. 도중 끊김·error는
 // live_conversation.js가 END VISIT 전까지 스스로 다시 붙는다(버튼 방식으로 바꾸지 않는다. 글라스를 쓰면 누를 화면이 없다).
 // 글라스를 쓰면 폰 화면이 꺼지므로 화면 꺼짐 막기(Wake Lock)를 시도하고, 숨김·다시 보임을 Live에 알린다.
 // iOS는 오래 백그라운드에 있던 탭을 메모리 때문에 새로 불러올 수 있다(11/18 실기기 20초 잠금에서는 연결이 그대로 유지됐다). 대비해서 Live 관람의 식별자만 sessionStorage에 두고
@@ -51,19 +51,31 @@ function setTalkLabel(label, hint) {
   talkBtn.setAttribute("aria-label", label);
   document.querySelector(".talk-hint").textContent = hint;
 }
-function useHoldToTalk() {
+function renderMicState(muted, hint) {
+  talkBtn.classList.toggle("recording", !muted);
+  talkBtn.classList.toggle("muted", muted);
+  talkBtn.setAttribute("aria-pressed", String(muted));
+  setTalkLabel(muted ? "Microphone off · tap to unmute" : "Microphone on · tap to mute", hint);
+  talkBtn.setAttribute("aria-label", "Mute microphone");
+}
+function useTapToTalk() {
   live = null;
-  talkBtn.classList.remove("recording");
-  talkBtn.removeAttribute("aria-pressed");
-  setTalkLabel("Hold to talk", "PRESS & HOLD TO ASK A QUESTION");
+  stream?.getAudioTracks().forEach(track => { track.enabled = false; });
+  renderMicState(true, "TAP TO UNMUTE · TAP AGAIN TO SEND");
 }
 function liveHandlers() {
   return {
     onStatus: ({ state, status, label }) => {
       setStatus(status);
-      setTalkLabel(label, "SPEAK ANYTIME · TAP TO MUTE");
-      talkBtn.classList.toggle("recording", state === "listening" || state === "speaking");
-      talkBtn.setAttribute("aria-pressed", String(state === "muted"));
+      const active = state === "listening" || state === "speaking";
+      talkBtn.disabled = !active && state !== "muted" && state !== "needs_tap";
+      if (active || state === "muted") {
+        renderMicState(!active, active ? "SPEAK FREELY · TAP TO MUTE" : "MICROPHONE MUTED · TAP TO UNMUTE");
+      } else {
+        talkBtn.classList.remove("recording", "muted");
+        talkBtn.removeAttribute("aria-pressed");
+        setTalkLabel(label, state === "needs_tap" ? "TAP TO RESUME AUDIO" : "PLEASE WAIT");
+      }
     },
     onArtwork: (data) => {
       // Live는 함수를 부를 때마다 artwork를 보낸다. 같은 작품이면 칩·요약·지금 비교를 건드리지 않는다.
@@ -78,9 +90,9 @@ function liveHandlers() {
     },
     onFallback: (reason) => {
       console.warn("Live stopped, falling back to /api/turn:", reason);
-      useHoldToTalk();
+      useTapToTalk();
       talkBtn.disabled = !sessionId;
-      setStatus("Live voice stopped. Hold the talk button to ask.");
+      setStatus("Live voice stopped. Tap to unmute; tap again to send your question.");
     },
   };
 }
@@ -98,7 +110,7 @@ async function startLive(conversation, session) {
   } catch (error) {
     console.warn("Live unavailable, using /api/turn:", error.message);
     conversation.close();
-    useHoldToTalk();
+    useTapToTalk();
     return false;
   }
 }
@@ -162,7 +174,7 @@ async function continueVisit() {
     console.warn("Could not continue the visit:", error.message);
     stream = null;
     video.srcObject = null;
-    useHoldToTalk();
+    useTapToTalk();
     talkBtn.disabled = true;
     $("start").disabled = false;
     setStatus("Ready to explore.");
@@ -171,7 +183,7 @@ async function continueVisit() {
 }
 talkBtn.addEventListener("click", () => {
   if (savedVisit) { continueVisit(); return; }
-  if (!live) return;
+  if (!live) { toggleRecording(); return; }
   if (live.needsTap) live.resumeAudio(); // "Tap to resume": 아이폰은 소리 장치를 깨우는 데 사용자 동작이 필요하다
   else live.toggleMuted();
 });
@@ -186,6 +198,8 @@ savedVisit = visitStore.load();
 if (savedVisit) {
   showScreen("experience-screen");
   talkBtn.disabled = false;
+  talkBtn.classList.remove("muted", "recording");
+  talkBtn.removeAttribute("aria-pressed");
   setTalkLabel("Tap to continue your visit", "YOUR VISIT WAS PAUSED");
   setStatus("Your visit was paused. Tap the button below to continue.");
 }
@@ -341,11 +355,11 @@ $("onboarding-form").addEventListener("submit",async event=>{
     showScreen("experience-screen");
     // FE1 Live 연결 (11/18): Live가 열리면 첫 인사도 Live가 말한다(speechSynthesis로 읽지 않는다).
     if(await startLive(pendingLive,data)){showScreenNoteOnce();return;}
-    // 여기부터는 Live를 못 열었을 때의 기존 방식 그대로.
+    // Live를 못 열면 탭 녹음 방식으로 질문을 보낸다.
     addMessage("docent",data.reply);
     rememberReply(data.reply);
     talkBtn.disabled=false;
-    setStatus("Point the camera at an artwork and hold the talk button.");
+    setStatus("Point the camera at an artwork. Tap to unmute; tap again to send.");
     showScreenNoteOnce(); // FE1 Live 연결 (11/18)
   }catch(error){
     pendingLive.close(); // FE1 Live 연결 (11/18)
@@ -355,46 +369,59 @@ $("onboarding-form").addEventListener("submit",async event=>{
   }
 });
 
-talkBtn.addEventListener("pointerdown",event=>{
-  event.preventDefault();
-  if(live)return; // FE1 Live 연결 (11/18): Live 중에는 누르고 있을 필요가 없다(click이 음소거 토글)
-  if(busy||!stream||!sessionId)return;
+function toggleRecording() {
+  if(busy||!stream||!sessionId||talkBtn.disabled)return;
+  if(recorder?.state === "recording") {
+    // Lock immediately: MediaRecorder.onstop and WAV decoding are asynchronous.
+    talkBtn.disabled = true;
+    recorder.stop();
+    stream.getAudioTracks().forEach(track => { track.enabled = false; });
+    renderMicState(true, "PREPARING YOUR QUESTION…");
+    return;
+  }
   if(!window.MediaRecorder){setStatus("Audio recording is unsupported in this browser. Use the text field.");return;}
   stopSpeaking();
   $("replay").disabled=true;$("test-voice").disabled=true;
   chunks=[];
-  try{
+  try {
+    stream.getAudioTracks().forEach(track => { track.enabled = true; });
     recorder=new MediaRecorder(new MediaStream(stream.getAudioTracks()));
     recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};
     recorder.onstop=onRecordingStop;
     recorder.start();
-    talkBtn.setPointerCapture?.(event.pointerId);
-    talkBtn.classList.add("recording");
-    talkBtn.querySelector(".talk-label").textContent="Listening… release to send";
-    setStatus("Listening…");
-  }catch(error){setStatus("Recording unavailable: "+error.message);$("test-voice").disabled=false;}
-});
-for(const type of ["pointerup","pointercancel","lostpointercapture"]){
-  talkBtn.addEventListener(type,()=>{
-    if(live||savedVisit)return; // FE1 Live 연결 (11/18)
-    if(recorder?.state==="recording")recorder.stop();
-    talkBtn.classList.remove("recording");
-    talkBtn.querySelector(".talk-label").textContent="Hold to talk";
-  });
+    renderMicState(false, "SPEAK YOUR QUESTION · TAP TO MUTE & SEND");
+    setStatus("Listening… tap to mute and send your question.");
+  } catch(error) {
+    useTapToTalk();
+    setStatus("Recording unavailable: "+error.message);
+    $("replay").disabled=!lastReply;$("test-voice").disabled=false;
+  }
 }
 async function onRecordingStop(){
-  $("replay").disabled=!lastReply;$("test-voice").disabled=false;
+  const recordingSession = sessionId;
   const blob=new Blob(chunks,{type:recorder.mimeType});
-  let wav;
-  try{wav=await toWav16k(blob);}
-  catch(error){setStatus("Could not decode recording: "+error.message);return;}
-  if(wav.size<MIN_WAV_BYTES){setStatus("Too short. Hold the button while speaking.");return;}
-  await sendTurn({audio:wav,frame:await captureFrame()});
+  busy=true;
+  try {
+    const wav=await toWav16k(blob);
+    if(sessionId !== recordingSession)return;
+    if(wav.size<MIN_WAV_BYTES){setStatus("Too short. Tap to unmute and speak before tapping again.");return;}
+    const frame=await captureFrame();
+    busy=false;
+    await sendTurn({audio:wav,frame});
+  } catch(error) {
+    setStatus("Could not prepare recording: "+error.message);
+  } finally {
+    busy=false;
+    talkBtn.disabled=!sessionId;
+    $("replay").disabled=!lastReply;$("test-voice").disabled=false;
+    renderMicState(true, "TAP TO UNMUTE · TAP AGAIN TO SEND");
+  }
 }
 $("text-form").addEventListener("submit",async event=>{
   event.preventDefault();
   const text=$("text-input").value.trim();
   if(!text||!sessionId||busy)return;
+  if(recorder?.state === "recording"){setStatus("Tap to mute and send your voice question first.");return;}
   $("text-input").value="";
   if(live&&live.sendText(text))return; // FE1 Live 연결 (11/18): 글 질문도 Live로. 못 보내면 기존 방식
   await sendTurn({text,frame:await captureFrame()});
@@ -438,9 +465,9 @@ $("end-visit").addEventListener("click",async()=>{
   if(busy)return;
   $("end-visit").disabled=true;
   stopSpeaking();
-  if(live){live.close();useHoldToTalk();} // FE1 Live 연결 (11/18): 마이크·사진 전송을 멈추고 WS를 닫는다
+  if(live){live.close();useTapToTalk();} // FE1 Live 연결 (11/18): 마이크·사진 전송을 멈추고 WS를 닫는다
   wakeLock.release();visitStore.clear();savedVisit=null; // FE1 Live 연결 (11/18): 관람 기록도 지운다
-  if(recorder?.state==="recording")recorder.stop();
+  if(recorder?.state==="recording"){recorder.onstop=null;recorder.stop();}
   if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
   video.srcObject=null;
   try{

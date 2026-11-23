@@ -12,3 +12,6 @@
 @media(min-width:650px){body{padding:20px}.app-shell{border-radius:28px;overflow:hidden;min-height:calc(100svh - 40px)}}
 @media(max-height:730px){.hero-art{height:125px;margin:16px 0}.gallery-painting{height:100px}.welcome-screen{padding-top:10px}.welcome-screen h1{font-size:35px}.prep-note{margin:10px 0}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important}}
+
+/* FE2: microphone toggle, shared by Live and tap-to-send fallback. */
+.talk-button{touch-action:manipulation}.talk-button.muted{background:var(--forest)}.talk-button:focus-visible{outline:3px solid #a45b45;outline-offset:3px}.talk-button:disabled{opacity:.55;cursor:wait}.mic-glyph{border:0;border-radius:0;width:24px;height:24px;display:block}.mic-slash{display:none}.talk-button.muted .mic-slash{display:block}
