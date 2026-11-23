@@ -157,6 +157,14 @@ mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout cer
 uv run uvicorn server.app:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem
 ```
 
+**운영 화면(/admin) 확인**: 서버를 켠 노트북에서 `http://localhost:8000/admin`을 엽니다. 인증이 없으므로 터널 주소로 열지 않고 로컬에서만 씁니다([시연 체크리스트](docs/시연_체크리스트.md)).
+
+- 탭 세 개: 대시보드, 질문 라벨, 작품 켜기/끄기.
+- 숫자는 `logs/`의 관람 기록에서 계산합니다. 기록은 기본이 꺼져 있으므로 `.env`에 `LIVE_VISIT_LOG=team`을 켜고 서버를 다시 켠 뒤 폰으로 관람해야 쌓입니다. 기록이 없으면 화면이 비어 있습니다.
+- 작품 켜기/끄기는 메모리에만 남아 서버를 다시 켜면 처음 상태로 돌아옵니다. 항상 끌 작품은 `.env`의 `LIVE_OFF_ARTWORKS`에 씁니다.
+- 운영 화면을 채워 보는 가짜 기록 생성기는 `tools/make_mock_visits.py`(사용법은 파일 머리 주석)입니다. 화면에 "가짜 자료"가 표시됩니다.
+- 집계 방법과 API 형식은 [API 약속](docs/api.md)의 운영 절에 있습니다.
+
 **Live 시험대**: 운영 서버와 별개로 포트 8013에 띄웁니다. 터널도 8013으로 걸고 아이폰에서 `/live`를 엽니다. 시험 절차는 [아이폰 시험](docs/FE1/FE1_아이폰_시험.md)에 있습니다.
 
 ```bash
