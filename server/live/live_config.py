@@ -4,8 +4,8 @@ import os
 from google.genai import types
 
 from .live_context import build_live_instruction, profile_block
-from .prompts import LIVE_INSTRUCTION
-from .question_labels import MODEL_LABEL_GUIDE, MODEL_LABELS, MODEL_OUTCOME_GUIDE, MODEL_OUTCOMES
+from ..prompts import LIVE_INSTRUCTION
+from ..question_labels import MODEL_LABEL_GUIDE, MODEL_LABELS, MODEL_OUTCOME_GUIDE, MODEL_OUTCOMES
 
 UNKNOWN = "unknown"
 

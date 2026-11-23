@@ -32,13 +32,13 @@ from google.genai.errors import APIError
 
 import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
 
-import server.live as relay
+import server.live.live as relay
 import server.session as sessions
-from server import live_config as settings
+from server.live import live_config as settings
 from server import question_labels
 from server.app import app as server_app
-from server.live_conversation import ranked_comparison_ids
-from server.live_transcript import clean_said, comparison_in_transcript
+from server.live.live_conversation import ranked_comparison_ids
+from server.live.live_transcript import clean_said, comparison_in_transcript
 
 verified_comparisons = {
     c["comparison_id"]: c for c in relay.comparisons
@@ -775,9 +775,9 @@ videos = [x["video"].data for x in fake.session.sent if "video" in x]
 check("인사 중에 온 사진은 들고 있다가 인사가 끝난 뒤 넘긴다", videos == [HELLO_JPEG], str(videos))
 
 print("28. .env의 오타와 빈 값에 서버가 죽지 않고 기본값으로 켜진다")
-# 환경 변수는 server.live를 불러오는 순간 읽는다. 그래서 이 프로세스가 아니라 새 프로세스에서
+# 환경 변수는 server.live.live를 불러오는 순간 읽는다. 그래서 이 프로세스가 아니라 새 프로세스에서
 # 불러 본다. 불러오다 예외가 나면 returncode가 0이 아니고, 그것이 uvicorn이 통째로 죽는 경우다.
-ENV_PROBE = ("import json, server.live; from server import live_config as l; print(json.dumps({"
+ENV_PROBE = ("import json, server.live.live; from server.live import live_config as l; print(json.dumps({"
              "'model': l.LIVE_MODEL, 'voice': l.LIVE_VOICE, 'policy': l.FRAME_POLICY,"
              "'start': l.LIVE_START_SENSITIVITY, 'silence': l.LIVE_SILENCE_MS,"
              "'prefix': l.LIVE_PREFIX_MS, 'idle': l.PHONE_IDLE_S}))")
@@ -790,7 +790,7 @@ def one_line(text):
 
 
 def load_live_with(**env):
-    """환경 변수를 바꾼 새 프로세스에서 server.live를 불러온다. 돌려주는 값: (출력, 설정 또는 None)."""
+    """환경 변수를 바꾼 새 프로세스에서 server.live.live를 불러온다. 돌려주는 값: (출력, 설정 또는 None)."""
     done = subprocess.run([sys.executable, "-c", ENV_PROBE], capture_output=True, text=True,
                           env={**os.environ, "PYTHONPATH": ".", **env})
     out = done.stdout + done.stderr
@@ -834,7 +834,7 @@ check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
 print("30. 비교 후보 글 순서와 ID 순서가 어긋나지 않는다")
 import re as _re  # noqa: E402
 
-from server.live_context import comparison_block as _block  # noqa: E402
+from server.live.live_context import comparison_block as _block  # noqa: E402
 
 for _profile in ({"country": "japan"}, {"region": "japan"}, {"country": "france"},
                  {"region": "france"}, {}):

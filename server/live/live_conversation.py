@@ -7,13 +7,13 @@ import asyncio
 import time
 from types import SimpleNamespace
 
-from . import session as sessions
-from .content import build_artwork_context, rank_comparisons
+from .. import session as sessions
+from ..content import build_artwork_context, rank_comparisons
 from . import live_config
 from .live_config import UNKNOWN
 from .live_context import MAX_COMPARISON_OPTIONS, REGION_TAGS, comparison_block, home_of
 from .live_transcript import comparison_in_transcript
-from .question_labels import normalize_label, normalize_outcome
+from ..question_labels import normalize_label, normalize_outcome
 
 
 def comparison_display(comparison_id, verified_comparisons):

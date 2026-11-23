@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException
 from google.genai import types
 from pydantic import BaseModel
 
-from .content import build_artwork_context
-from .prompts import ASK_INSTRUCTION
+from ..content import build_artwork_context
+from ..prompts import ASK_INSTRUCTION
 
 router = APIRouter()
 

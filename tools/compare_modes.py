@@ -27,7 +27,7 @@ from pathlib import Path
 
 from google.genai import types
 
-from server.ask import candidate_models
+from server.pre_live.ask import candidate_models
 from server.content import build_artwork_context, load_artworks
 from server.gemini_client import make_client
 from server.prompts import ASK_INSTRUCTION

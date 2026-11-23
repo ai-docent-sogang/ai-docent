@@ -21,12 +21,12 @@ from fastapi.responses import FileResponse
 from google.genai import types
 from google.genai.errors import APIError
 
-from . import session as sessions
-from .content import build_artwork_context, load_artworks, load_comparisons
-from .gemini_client import make_client
+from .. import session as sessions
+from ..content import build_artwork_context, load_artworks, load_comparisons
+from ..gemini_client import make_client
 from . import live_config as settings
-from . import on_view
-from . import visit_log
+from .. import on_view
+from .. import visit_log
 from .live_conversation import LiveConversation
 from .live_transcript import feed_said, flush_said
 
@@ -46,7 +46,7 @@ async def lifespan(app):
 router = APIRouter(lifespan=lifespan)
 artworks = load_artworks()
 comparisons = load_comparisons()
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 
 # push 모드에서 첫 단어와 끝 단어가 잘리지 않도록 발화 전후에 무음을 넣는다.
 SILENCE_MS = 300

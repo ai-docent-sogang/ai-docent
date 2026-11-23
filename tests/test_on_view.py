@@ -16,9 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
 
 import server.session as sessions  # noqa: E402
-from server import live as relay  # noqa: E402
+from server.live import live as relay  # noqa: E402
 from server import on_view, visit_log  # noqa: E402
-from server.live_conversation import LiveConversation  # noqa: E402
+from server.live.live_conversation import LiveConversation  # noqa: E402
 
 PASS = FAIL = 0
 ARTWORK = "KHD_SSIREUM"

@@ -1,12 +1,12 @@
 """Live 시스템 지시문과 초기 관람객 프로필 구성 (담당 BE1).
 
-미리 보기: uv run python -m server.live_context KHD_SSIREUM europe 20-29
+미리 보기: uv run python -m server.live.live_context KHD_SSIREUM europe 20-29
 """
 
 import sys
 
-from .content import build_artwork_context, load_artworks, load_comparisons, rank_comparisons
-from .prompts import LIVE_INSTRUCTION
+from ..content import build_artwork_context, load_artworks, load_comparisons, rank_comparisons
+from ..prompts import LIVE_INSTRUCTION
 
 # 화면의 지역·국가 값을 `data/comparisons.csv`의 profile_tags에 맞춘다.
 REGION_TAGS = {
