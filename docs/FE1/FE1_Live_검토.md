@@ -3,7 +3,7 @@
 담당: FE1 김도혁. 측정 도구: [`archive/tools/live/probe_live_audio.py`](../../archive/tools/live/probe_live_audio.py),
 [`tools/live/live_relay_spike.py`](../../tools/live/live_relay_spike.py), [`tools/live/fake_browser_live.py`](../../tools/live/fake_browser_live.py).
 
-> 11/23 주: 이 문서가 말하는 `/api/ask`는 폐기했다. 시연 안전망은 `/api/turn`의 누르고 말하기가 맡는다(Live 연결이 실패하면 화면이 그쪽으로 돌아온다).
+> 11/23 주: 이 문서가 말하는 `/api/ask`는 폐기했다. 시연 안전망은 `/api/turn`의 마이크 탭 녹음이 맡는다(Live 연결이 실패하면 화면이 그쪽으로 돌아온다).
 배경: BE1의 방식 비교 PR #7, FE1의 [응답 시간 측정](../../archive/docs/FE1/FE1_응답시간_측정.md).
 
 ## 왜 확인했나

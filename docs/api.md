@@ -13,7 +13,7 @@
 | `WS /ws/live` | 폰 웹앱(`static/live/live_conversation.js`) | **본선.** 관람 중 음성·사진·글 대화 전부 |
 | `POST /api/session` | 폰 웹앱 | 관람을 시작할 때 `session_id`를 받는다 |
 | `POST /api/session/{session_id}/end` | 폰 웹앱 | 관람을 끝낼 때. 서버 기억을 지우고 남은 Live 연결을 닫는다 |
-| `POST /api/turn` | 폰 웹앱 | **안전망.** Live 연결이 실패하면 화면이 누르고 말하기로 돌아가 이 주소로 묻는다 |
+| `POST /api/turn` | 폰 웹앱 | **안전망.** Live 연결이 실패하면 화면이 마이크 탭 녹음으로 돌아가 이 주소로 묻는다 |
 | `GET /`, `GET /static/*` | 관람객 폰 | 웹앱 화면과 스크립트 |
 | `GET /admin`, `GET /api/admin/*`, `POST /api/admin/artworks/{id}/on_view` | 운영자 | 운영 페이지, 집계, 작품 켜기/끄기 |
 | `GET /live`, `GET /live/status` | 개발자 | Live 시험 페이지, 연결 상태 확인 |
@@ -130,7 +130,7 @@
 - **폰이 30초 동안 아무것도 보내지 않으면** 서버가 죽은 연결로 보고 4001(`no input from the phone`)로 닫습니다. handsfree만 해당합니다. 그래서 `ping`을 보냅니다.
 - **같은 `session_id`로 새 연결이 오면** 앞 연결을 4000(`replaced by a newer connection`)으로 닫습니다.
 - **웹앱의 재연결 간격**은 1초에서 시작해 두 배씩 늘려 최대 15초이고, 연결을 여는 제한 시간은 12초입니다.
-- **Live 연결 자체가 실패하면** 웹앱은 누르고 말하기로 돌아가 `POST /api/turn`을 씁니다.
+- **Live 연결 자체가 실패하면** 웹앱은 마이크 탭 녹음으로 돌아가 `POST /api/turn`을 씁니다.
 
 ### 서버 안에서 일어나는 일 (폰에는 안 보입니다)
 

@@ -6,8 +6,8 @@
 
 ## 지금 상태 (2026-11-24 기준)
 
-- **화면**: AIVY(FE2). 관람 시작 → 카메라로 그림 비추기 → Hold to talk로 말하거나 글로 질문 → 인식된 작품 상세 → My visit 요약 → 관람 종료.
-- **대화 방식**: Live 실시간 음성(`WS /ws/live`)이 본선입니다. 폰이 마이크 소리와 3초마다 사진을 보내고, 서버가 Gemini Live로 중계해 음성 답을 돌려줍니다. 연결이 실패하면 화면이 누르고 말하기로 돌아가 요청·응답 방식(`POST /api/turn`)을 씁니다. 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
+- **화면**: AIVY(FE2). 관람 시작 → 카메라로 그림 비추기 → 마이크를 켜고 말하거나 글로 질문 → 인식된 작품 상세 → My visit 요약 → 관람 종료.
+- **대화 방식**: Live 실시간 음성(`WS /ws/live`)이 본선입니다. 폰이 마이크 소리와 3초마다 사진을 보내고, 서버가 Gemini Live로 중계해 음성 답을 돌려줍니다. 연결이 실패하면 화면이 마이크 탭 녹음(한 번 눌러 말하고 다시 눌러 보내기)으로 돌아가 요청·응답 방식(`POST /api/turn`)을 씁니다. 주고받는 형식은 [API 약속](docs/api.md)에 있습니다.
 - **작품 인식**: Live 모델이 사진을 보고 작품을 고릅니다(`report_current_artwork`). 모르면 `unknown`입니다. `LIVE_RECOGNIZER_FALLBACK=on`이면 `unknown`일 때 기준 이미지 검색(`server/artwork_recognizer.py`, BE2)이 한 번 더 판단합니다(기본 off, `uv sync --extra recognition` 필요).
 - **개인화**: 첫 인사에서 출신 국가와 익숙한 미술을 묻고, 화면에서 고른 지역·연령은 Live 첫 메시지의 `profile`로 서버에 갑니다. 비교 작품 순서가 이 프로필로 정해집니다. `/api/turn` 안전망 경로는 화면 선택값을 보내지 않습니다.
 - **저장하지 않는 것**: 녹음, 카메라 사진, 세션. 세션은 서버 메모리에만 있다가 서버를 끄면 사라집니다.
@@ -192,7 +192,7 @@ PYTHONPATH=. uv run python -m tools.check_content
 
 1. 아이폰에 이어폰을 연결하고 무음 모드를 끕니다. 무음 모드에서는 음성이 나오지 않을 수 있습니다.
 2. 첫 화면에서 지역과 연령대를 고르고 **START EXPLORING**을 누른 뒤 카메라·마이크 접근을 허용합니다. 도슨트가 인사하며 어디서 왔는지, 어떤 미술을 좋아하는지 묻습니다.
-3. Live가 연결되면 버튼 없이 그냥 말합니다. 예: "I'm from France and I love Impressionism." Live 연결이 실패하면 **Hold to talk** 버튼이 나타나고 `/api/turn`으로 돌아갑니다.
+3. Live가 연결되면 버튼 없이 그냥 말합니다. 예: "I'm from France and I love Impressionism." Live 연결이 실패하면 마이크 버튼이 탭 녹음으로 바뀌고 `/api/turn`으로 돌아갑니다. 마이크 버튼은 한 번 누르면 음소거, 다시 누르면 입력 재개입니다.
 4. 모니터나 인쇄물의 작품을 비추고 질문합니다. 예: "What am I looking at?", "Can you compare it with something I know?"
 5. 작품을 알아보면 카메라 위에 **ARTWORK RECOGNIZED** 칩이 뜹니다. 누르면 작품 상세와 쓰인 비교 작품이 나옵니다.
 6. 오른쪽 위 **My visit**에서 이번 관람에서 본 작품과 비교 수를 보고, **END VISIT**으로 관람을 끝냅니다. 서버의 세션도 함께 지워집니다.
