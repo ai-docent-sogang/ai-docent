@@ -66,6 +66,105 @@
 
 보내는 값: 없음. 받는 값: `{"ok": true}`. 그 세션의 기억을 서버에서 지우고, 그 관람에 남은 Live 연결과 재개 정보도 지웁니다. 웹앱은 END VISIT에서 이 주소를 부릅니다.
 
+## WebSocket `/ws/live` — Live 음성 대화 (FE1, 11/23 추가)
+
+본선 경로입니다. 관람 중의 음성·사진·글 대화가 이 연결 하나로 오갑니다. 코드는 서버 `server/live/live.py`, 폰 `static/live/live_conversation.js`입니다. 음성과 사진은 Gemini로 넘기기만 하고 저장하지 않습니다. 인증이 없고, 한 관람(`session_id`)에는 연결을 하나만 둡니다.
+
+모드가 둘입니다.
+
+| 모드 | 누가 쓰나 | 특징 |
+| --- | --- | --- |
+| `handsfree` | 폰 웹앱 | 마이크 소리를 계속 보내고 사진을 3초마다 보냅니다. 말의 시작과 끝은 모델이 자동으로 감지하고, 작품도 모델이 사진을 보고 고릅니다 |
+| `push` | `/live` 시험 페이지 | 버튼을 누르는 동안만 소리를 보냅니다. 작품은 첫 메시지로 정해집니다. 사진·글 메시지는 받지 않습니다 |
+
+### 순서
+
+1. `POST /api/session`으로 `session_id`를 받습니다. 요약 화면과 END VISIT가 이 값을 씁니다.
+2. `/ws/live`를 열고 첫 메시지를 보냅니다.
+3. 서버가 `ready`를 보냅니다. 이때부터 마이크 소리와 사진을 보냅니다.
+4. 관람 중에는 아래 표대로 주고받습니다.
+5. 관람을 끝낼 때 `POST /api/session/{session_id}/end`를 부릅니다. 서버가 남은 연결을 1000으로 닫습니다.
+
+### 첫 메시지 (폰 → 서버, 텍스트 JSON, 연결 직후 한 번)
+
+| 필드 | 필수 | 형식 | 설명 |
+| --- | --- | --- | --- |
+| `mode` | handsfree면 예 | `"handsfree"` 또는 `"push"` | 없거나 다른 값이면 push로 봅니다 |
+| `session_id` | 아니오 | 문자열 | `/api/session`에서 받은 값. 없거나 서버를 다시 켜서 사라졌으면 새로 만들고 `ready`에 담아 돌려줍니다 |
+| `profile` | 아니오 | 객체 | `language`(`en`·`ko`·`zh`·`ja`), `region` 또는 `country`(`north-america`·`europe`·`china`·`japan` 또는 국가 이름), `age_group` 또는 `age`(`10-19`·`20-29`…`60+` 또는 `child`·`teen`·`adult`·`senior`). 연결할 때 한 번만 넣고 도중에 바꾸지 않습니다 |
+| `resume` | 아니오 | `true` | 같은 관람에 이어 붙일 때. 아래 "끊기거나 바뀔 때" 참고 |
+| `artwork_id` | push면 예 | 문자열 | push에서 모르는 작품이면 `{"type":"error","message":"unknown artwork"}`를 보내고 닫습니다. handsfree에서는 있으면 그 작품으로 시작하고, 없거나 꺼진 작품이면 무시합니다 |
+
+### 폰 → 서버 (첫 메시지 이후)
+
+| 보내는 것 | 형식 | 모드 |
+| --- | --- | --- |
+| 마이크 소리 | 바이너리. 16kHz 모노 PCM16. 웹앱은 100ms(1600샘플)씩 보냅니다 | 둘 다 |
+| 카메라 사진 | `{"type":"frame","jpeg":"<base64 JPEG>"}`. 웹앱은 3초마다, 가로 1100px 이하, 품질 0.7로 보냅니다 | handsfree |
+| 글로 묻기 | `{"type":"text","text":"..."}` | handsfree |
+| 살아 있다는 신호 | `{"type":"ping"}`. 웹앱은 5초마다 보냅니다. 서버는 받기만 하고 Gemini로 넘기지 않습니다 | handsfree |
+| 말 시작 · 말 끝 | `{"type":"speech_start"}`, `{"type":"speech_end"}` (버튼 누름·뗌) | push |
+
+### 서버 → 폰
+
+| 받는 것 | 형식 | 폰이 할 일 |
+| --- | --- | --- |
+| 준비됨 | `{"type":"ready","model","mode","voice","session_id"}`. 시작 작품을 알면 `artwork_title`, `resume:true`로 연 연결이면 `resumed`(앞 대화를 이었는지)가 더해집니다 | 연결 완료. `session_id`를 저장하고 마이크·사진 전송을 시작 |
+| 받아쓴 질문 | `{"type":"heard","text"}` 조각 | 이어 붙여 질문으로 표시 |
+| 답변 음성 | 바이너리. 24kHz 모노 PCM16 | 이어 붙여 재생 |
+| 답변 자막 | `{"type":"said","text"}` 조각 | 이어 붙여 답으로 표시 |
+| 끼어들기 | `{"type":"interrupted"}` | 재생 중인 소리를 바로 멈춤 |
+| 턴 끝 | `{"type":"turn_complete"}`. **모델이 함수를 부른 직후에는 말 없는 `turn_complete`가 먼저 오고, 답변(`said`·음성)은 그 뒤에 옵니다.** 질문 하나에 두 번 올 수 있습니다 | 한 번 받았다고 질문이 끝났다고 보지 않음. 답변 자막이 나온 뒤의 `turn_complete`를 한 턴의 끝으로 봄 |
+| 작품 인식 | `{"type":"artwork","artwork_id","artwork_title","artist"}` | 화면의 작품 표시를 바꿈. 새 칸이 더해져도 버리지 말고 그대로 넘깁니다 |
+| 비교 작품 | `{"type":"comparison","comparison_id","artwork_id","source","foreign_title","foreign_artist","foreign_collection","foreign_url"}`. `source`는 `function`(모델이 함수로 보고) 또는 `transcript`(함수 없이 말한 비교를 자막에서 찾음) | 요약 화면용 비교 기록 |
+| 재연결 중 | `{"type":"reconnecting"}`. `kept_conversation`(참·거짓)이 함께 오기도 합니다 | 입력을 잠그고 "잠시만요" 안내 |
+| 다시 붙음 | `{"type":"reconnected","model","mode","voice","session_id","kept_conversation"}` | 잠금 해제. `kept_conversation`이 거짓이면 앞 대화가 이어지지 않았으니 안내를 바꿈 |
+| 오류 | `{"type":"error","message"}` | 연결 전이면 실패, 연결 뒤면 재연결 |
+
+모르는 `type`은 무시합니다. 서버가 먼저 새 메시지를 더해도 폰이 멈추지 않아야 합니다.
+
+### 끊기거나 바뀔 때
+
+- **Gemini 쪽 연결이 끊기면** 서버가 알아서 다시 붙입니다(`GoAway` 예고, 비활성 종료, 핸들 거부). 폰은 `reconnecting`에서 `reconnected`까지 입력을 잠급니다.
+- **폰 연결이 끊기면** 같은 `session_id`와 `profile`에 `"resume": true`를 더해 첫 메시지를 다시 보냅니다. 서버가 저장해 둔 재개 정보와 작품으로 이어 갑니다. 저장은 연결이 끊긴 뒤 2시간입니다. 웹앱은 `session_id`를 `sessionStorage`에 두어 새로고침 뒤에도 이어 붙입니다.
+- **폰이 30초 동안 아무것도 보내지 않으면** 서버가 죽은 연결로 보고 4001(`no input from the phone`)로 닫습니다. handsfree만 해당합니다. 그래서 `ping`을 보냅니다.
+- **같은 `session_id`로 새 연결이 오면** 앞 연결을 4000(`replaced by a newer connection`)으로 닫습니다.
+- **웹앱의 재연결 간격**은 1초에서 시작해 두 배씩 늘려 최대 15초이고, 연결을 여는 제한 시간은 12초입니다.
+- **Live 연결 자체가 실패하면** 웹앱은 누르고 말하기로 돌아가 `POST /api/turn`을 씁니다.
+
+### 서버 안에서 일어나는 일 (폰에는 안 보입니다)
+
+- **작품 인식은 모델이 합니다.** 모델이 3초마다 오는 사진을 보고 `report_current_artwork(artwork_id)`를 부릅니다. 값은 켜져 있는 작품 ID와 `unknown`이고, 이 함수가 인식의 전부입니다. 별도의 탐지·검색 모듈을 거치지 않습니다.
+- `report_comparison(comparison_id)`는 지금 작품의 검증된 비교쌍만 받습니다. 아니면 거절하고 쓸 수 있는 ID를 돌려줍니다.
+- 질문마다 `lookup_facts(label, outcome)`로 그 작품의 사실을 받습니다(`LIVE_FACTS=per_question`, 기본). 조회한 턴이 질문으로 집계됩니다. `per_artwork`면 작품을 보고할 때 사실을 한 번에 주고 `report_question`으로 질문을 보고합니다.
+- 운영 페이지에서 끈 작품은 연결마다 목록에서 빠집니다.
+
+### 서버 설정 (`.env`, 모두 선택)
+
+| 이름 | 기본값 | 뜻 |
+| --- | --- | --- |
+| `LIVE_MODEL` | `gemini-3.8-live` | Live 모델 |
+| `LIVE_VOICE` | `Kore` | 도슨트 목소리 |
+| `LIVE_FRAME_POLICY` | `every` | `every`는 사진을 모두 넘기고, `on_speech`는 연결 직후 첫 장과 질문하는 순간의 최신 한 장만 넘깁니다 |
+| `LIVE_FACTS` | `per_question` | 사실을 주는 시점. `per_artwork`는 조회 왕복이 없어 질문당 약 1초 빠르다고 코드 주석에 적혀 있습니다(이 문서에서 다시 재지는 않았습니다) |
+| `LIVE_PHONE_IDLE_S` | `30` | 폰이 이 초만큼 조용하면 연결을 닫음 |
+| `LIVE_START_SENSITIVITY` | `LOW` | 말 시작 감지 민감도(`LOW`·`HIGH`). 짧은 추임새를 덜 잡습니다 |
+| `LIVE_SILENCE_MS`, `LIVE_PREFIX_MS` | `700`, `300` | 말이 끝났다고 보는 무음 길이, 말 시작 앞에 붙여 두는 길이(ms) |
+| `LIVE_VISIT_LOG` | `off` | 관람 기록. `off`·`team`·`visitor`. 꺼져 있으면 운영 페이지에 아무것도 쌓이지 않습니다 |
+| `LIVE_OFF_ARTWORKS` | 비어 있음 | 서버를 켤 때 꺼 둘 작품 ID(쉼표로 구분) |
+
+서버를 켜면 적용된 값을 `[live] model=... voice=...` 한 줄로 보여 줍니다.
+
+### 이 절을 어디까지 확인했나 (11/23)
+
+실제 서버와 Gemini에 붙어 이 절대로 따라 해 16가지를 확인했습니다. push의 모르는 작품 오류와 닫힘, handsfree의 `ready` 칸과 `session_id`, `resumed` 칸, `/live/status` 칸, 인사 턴의 자막·음성, 사진을 보낸 뒤 글 질문의 `artwork` 메시지와 두 번의 `turn_complete`, 같은 `session_id`의 새 연결에 앞 연결이 4000으로 닫힘, END VISIT가 연결을 1000으로 닫음입니다.
+
+**이번에 돌려 보지 않은 것.** 폰이 30초 조용할 때의 4001 닫힘, `interrupted`, `kept_conversation`, push의 `speech_start`, `LIVE_FRAME_POLICY=on_speech`입니다. 이것들은 가짜 Gemini로 하는 `tests/live/test_live_session_lifetime.py`가 다룹니다(실제 Gemini로는 확인하지 않았습니다). `profile`이 말투에 미치는 영향은 코드만 읽었고 어느 쪽으로도 확인하지 않았습니다.
+
+### GET `/live/status` — 연결 상태 (운영 확인용)
+
+받는 값: `active_visits`(접속 중인 관람 수), `visits`(각 항목 `session_id` 앞 4글자·`artwork_id`·`idle_s`·`gemini_connected`·`reconnects`), `saved_resumes`(저장된 재개 정보 수), `model`, `voice`, `frame_policy`. 질문·답변·재개 핸들·전체 세션 ID는 내보내지 않습니다.
+
 ## 운영 API (FE1, 11/19 추가) — 관람객 화면이 아닙니다
 
 운영자가 보는 주소입니다. 코드: `server/admin.py`. 집계 수식은 `server/visit_stats.py`, 작품 켜기/끄기 상태는 `server/on_view.py`에 있습니다.
