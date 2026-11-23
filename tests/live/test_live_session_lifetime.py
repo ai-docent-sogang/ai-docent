@@ -825,7 +825,8 @@ saved_config = (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY,
     "gemini-3.8-live", "Kore", "every", "LOW", 700, 300, 30.0)
 check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
       settings.env_summary_line() == "[live] model=gemini-3.8-live voice=Kore frame_policy=every "
-      "start=LOW silence=700ms prefix=300ms idle=30s facts=per_question", settings.env_summary_line())
+      "start=LOW silence=700ms prefix=300ms idle=30s facts=per_question "
+      "recognizer_fallback=off", settings.env_summary_line())
 (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY, settings.LIVE_START_SENSITIVITY,
  settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS, settings.PHONE_IDLE_S) = saved_config
 
@@ -1053,6 +1054,46 @@ with TestClient(server_app) as client:
     check("일시 연결 종료는 관람 기억과 재개 핸들을 유지한다",
           sessions.get_session(second_sid) is not None and saved is not None
           and saved["handle"] == "status-h2")
+
+print("33. 인식 보조: Live가 unknown이면 기준 이미지 검색으로 한 번 더 판단한다(LIVE_RECOGNIZER_FALLBACK=on)")
+import asyncio as _asyncio
+from server.live import live_recognizer_fallback as _fallback
+
+_asked = []
+async def _fake_found(jpeg, artworks, client):
+    _asked.append(jpeg)
+    return ARTWORK
+async def _fake_nothing(jpeg, artworks, client):
+    return ""
+_old = (relay.recognize_unknown, settings.RECOGNIZER_FALLBACK)
+try:
+    settings.RECOGNIZER_FALLBACK = "on"
+    relay.recognize_unknown = _fake_found
+    got, fake = run([[[msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])]]],
+                    expect=2, first=HANDSFREE, linger=0.3,
+                    after_ready=[{"type": "frame", "jpeg": base64.b64encode(b"jpeg").decode()}])
+    r = fake.session.tool_responses[0].response
+    check("보조가 찾으면 그 작품으로 결과를 돌려준다", r.get("artwork_id") == ARTWORK, str(r)[:80])
+    check("화면에도 작품을 알린다", "artwork" in types_of(got), str(types_of(got)))
+    check("보조는 한 번만 부른다", len(_asked) == 1, str(len(_asked)))
+    relay.recognize_unknown = _fake_nothing
+    got, fake = run([[[msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])]]],
+                    expect=1, first=HANDSFREE, linger=0.3)
+    r = fake.session.tool_responses[0].response
+    check("보조도 못 찾으면 unknown 그대로", r.get("artwork_id") == "unknown", str(r)[:80])
+    settings.RECOGNIZER_FALLBACK = "off"
+    relay.recognize_unknown = _fake_found
+    _asked.clear()
+    got, fake = run([[[msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])]]],
+                    expect=1, first=HANDSFREE, linger=0.3)
+    check("off(기본)이면 보조를 부르지 않는다",
+          not _asked and fake.session.tool_responses[0].response["artwork_id"] == "unknown", str(_asked))
+finally:
+    relay.recognize_unknown, settings.RECOGNIZER_FALLBACK = _old
+check("사진이 없으면 인식기를 만들지 않고 빈 값", _asyncio.run(_fallback.recognize_unknown(None, {}, None)) == "")
+os.environ["GEMINI_MODEL"] = "m"
+check("인식기를 못 불러와도(torch 없음 등) 예외 없이 빈 값",
+      _asyncio.run(_fallback.recognize_unknown(b"x", {ARTWORK: {}}, None)) == "")
 
 print()
 if failures:

@@ -147,6 +147,7 @@
 | `LIVE_VOICE` | `Kore` | 도슨트 목소리 |
 | `LIVE_FRAME_POLICY` | `every` | `every`는 사진을 모두 넘기고, `on_speech`는 연결 직후 첫 장과 질문하는 순간의 최신 한 장만 넘깁니다 |
 | `LIVE_FACTS` | `per_question` | 사실을 주는 시점. `per_artwork`는 조회 왕복이 없어 질문당 약 1초 빠르다고 코드 주석에 적혀 있습니다(이 문서에서 다시 재지는 않았습니다) |
+| `LIVE_RECOGNIZER_FALLBACK` | `off` | `on`이면 Live가 `report_current_artwork`에 `unknown`을 냈을 때 최근 사진 1장을 기준 이미지 검색(`artwork_recognizer.py`)으로 한 번 더 판단합니다. 찾으면 그 작품으로 처리하고 관람 기록의 `via`가 `recognizer`가 됩니다. `uv sync --extra recognition`이 필요하고, 못 불러오면 `unknown`을 유지합니다 |
 | `LIVE_PHONE_IDLE_S` | `30` | 폰이 이 초만큼 조용하면 연결을 닫음 |
 | `LIVE_START_SENSITIVITY` | `LOW` | 말 시작 감지 민감도(`LOW`·`HIGH`). 짧은 추임새를 덜 잡습니다 |
 | `LIVE_SILENCE_MS`, `LIVE_PREFIX_MS` | `700`, `300` | 말이 끝났다고 보는 무음 길이, 말 시작 앞에 붙여 두는 길이(ms) |

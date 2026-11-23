@@ -67,6 +67,8 @@ class LiveConversation:
                  "last_input": time.monotonic(),
                  # on_speech 정책: 들고 있는 최신 사진, 이 Gemini 연결에서 첫 사진을 넘겼는지
                  "latest_frame": None, "first_frame_sent": False, "turn_frame_sent": False,
+                 # 가장 최근 사진(메모리에만). Live가 unknown이라고 할 때 인식 보조가 쓴다.
+                 "last_jpeg": None,
                  # 이번 턴에 report_comparison이 불렸는지(받아쓰기로 비교를 찾을지 정할 때 쓴다)
                  "comparison_called": False,
                  # 받아쓰기 거르기: 아직 들고 있는 꼬리, 걸러 낸 모델 속 글(턴이 끝나면 로그에 적는다)
@@ -152,7 +154,7 @@ class LiveConversation:
         self.state["heard_at"] = self.state["first_audio_at"] = self.state["speech_end_at"] = None
         self.state["channel"] = ""
 
-    def answer_tool_call(self, call):
+    def answer_tool_call(self, call, via="function"):
         """Live의 함수 호출 하나에 돌려줄 결과를 만들고, 폰에 알릴 것이 있으면 줄에 넣는다."""
         args = call.args or {}
         if call.name == "report_current_artwork":
@@ -160,12 +162,12 @@ class LiveConversation:
             found = self.artworks.get(artwork_id)
             if found is None:
                 # unknown이거나 목록 밖의 값. 지금 작품을 지우지 않는다(잠깐 다른 곳을 비춘 경우).
-                self.vlog.event("artwork_unknown", via="function")
+                self.vlog.event("artwork_unknown", via=via)
                 return {"artwork_id": UNKNOWN,
                         "instruction": "You cannot tell which painting is in view. Do not describe any "
                                        "painting. Kindly ask the visitor to point the camera at the painting."}
             self.state["artwork_id"] = artwork_id
-            self.vlog.event("artwork_identified", artwork_id=artwork_id, via="function")
+            self.vlog.event("artwork_identified", artwork_id=artwork_id, via=via)
             self.save_resume()
             used = list(self.visit.used_comparison_ids)
             if self.state["comparison_id"]:

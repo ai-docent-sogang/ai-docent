@@ -28,6 +28,7 @@ from . import live_config as settings
 from .. import on_view
 from .. import visit_log
 from .live_conversation import LiveConversation
+from .live_recognizer_fallback import recognize_unknown
 from .live_transcript import feed_said, flush_said
 
 
@@ -238,6 +239,7 @@ async def live(ws: WebSocket):
                     if not jpeg:
                         continue
                     data = {"type": "frame", "jpeg_bytes": jpeg}
+                    state["last_jpeg"] = jpeg
                     if state["opening_turn"]:
                         # 인사 중에는 사진을 보류한다. 사진 입력이 인사 자막의 내부 지시문 노출을 유발할 수 있다.
                         state["latest_frame"] = jpeg
@@ -310,7 +312,15 @@ async def live(ws: WebSocket):
                 # 모델의 함수 호출마다 서버가 결과를 전송한다.
                 responses = []
                 for call in m.tool_call.function_calls or []:
-                    result = conversation.answer_tool_call(call)
+                    via = "function"
+                    if (call.name == "report_current_artwork" and settings.RECOGNIZER_FALLBACK == "on"
+                            and str((call.args or {}).get("artwork_id") or "") not in conversation.artworks):
+                        # Live가 모르겠다고 했다. 최근 사진을 기준 이미지 검색으로 한 번 더 본다.
+                        found = await recognize_unknown(state["last_jpeg"], artworks, client)
+                        if found in conversation.artworks:
+                            call.args = {"artwork_id": found}
+                            via = "recognizer"
+                    result = conversation.answer_tool_call(call, via)
                     print(f"[live] 함수 {call.name}({json.dumps(call.args or {}, ensure_ascii=False)})"
                           f" → {result.get('artwork_id') or result.get('comparison_id') or result.get('error', '')}"[:200])
                     responses.append(types.FunctionResponse(id=call.id, name=call.name, response=result))

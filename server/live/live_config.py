@@ -59,6 +59,10 @@ FRAME_POLICY = _env_choice("LIVE_FRAME_POLICY", "every", ("every", "on_speech"))
 # - per_artwork는 작품이 바뀔 때 한 번에 준다(조회 왕복이 없어 질문당 약 1초 빠르다).
 LIVE_FACTS = _env_choice("LIVE_FACTS", "per_question", ("per_question", "per_artwork"))
 
+# Live가 작품을 못 알아보면(unknown) 기준 이미지 검색(server/artwork_recognizer.py)으로 한 번 더 판단한다.
+# on이면 `uv sync --extra recognition`이 필요하다. 기본은 off(Live의 판단만 쓴다).
+RECOGNIZER_FALLBACK = _env_choice("LIVE_RECOGNIZER_FALLBACK", "off", ("off", "on"))
+
 # Safari가 다시 로드할 때도 소켓 종료가 누락될 수 있어 handsfree 무응답 연결을 닫는다.
 PHONE_IDLE_S = _env_float("LIVE_PHONE_IDLE_S", 30)
 
@@ -67,7 +71,8 @@ def env_summary_line():
     """API 키를 제외한 Live 설정을 시작 로그에 표시한다."""
     return (f"[live] model={LIVE_MODEL} voice={LIVE_VOICE} frame_policy={FRAME_POLICY} "
             f"start={LIVE_START_SENSITIVITY} silence={LIVE_SILENCE_MS}ms "
-            f"prefix={LIVE_PREFIX_MS}ms idle={PHONE_IDLE_S:g}s facts={LIVE_FACTS}")
+            f"prefix={LIVE_PREFIX_MS}ms idle={PHONE_IDLE_S:g}s facts={LIVE_FACTS} "
+            f"recognizer_fallback={RECOGNIZER_FALLBACK}")
 
 
 _config_line_printed = False
