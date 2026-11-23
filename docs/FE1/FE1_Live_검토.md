@@ -1,7 +1,7 @@
 # Live API 전환 검토 — 코드로 확인한 부분 (FE1, 2026-11-11)
 
-담당: FE1 김도혁. 측정 도구: [`tools/probe_live_audio.py`](../../tools/probe_live_audio.py),
-[`tools/live_relay_spike.py`](../../tools/live_relay_spike.py), [`tools/fake_browser_live.py`](../../tools/fake_browser_live.py).
+담당: FE1 김도혁. 측정 도구: [`tools/probe_live_audio.py`](../../tools/live/probe_live_audio.py),
+[`tools/live_relay_spike.py`](../../tools/live/live_relay_spike.py), [`tools/fake_browser_live.py`](../../tools/live/fake_browser_live.py).
 배경: BE1의 방식 비교 PR #7, FE1의 [응답 시간 측정](FE1_응답시간_측정.md).
 
 ## 왜 확인했나
