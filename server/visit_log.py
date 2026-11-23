@@ -18,6 +18,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .question_labels import LABELS, OUTCOMES
+
 ROOT = Path(__file__).resolve().parent.parent
 MODES = ("off", "team", "visitor")
 SOURCE_KINDS = ("mock", "team_rehearsal", "team_shoot", "visitor")
@@ -33,14 +35,16 @@ ALLOWED: dict[str, set[str]] = {
     "visit_start": {"start_bucket", "season_id", "gallery", "ui_lang", "mode", "model", "voice"},
     "artwork_identified": {"artwork_id", "via"},
     "artwork_unknown": {"via"},
-    "question": {"artwork_id", "channel", "label", "outcome", "first_audio_ms"},
+    "question": {"artwork_id", "channel", "label", "outcome", "grounded", "first_audio_ms"},
     "comparison": {"artwork_id", "comparison_id", "via"},
     "quality": {"issue", "kept_conversation"},
     # 작품별 사용량을 집계한다. 인사 등 작품이 정해지지 않은 턴은 작품 ID를 비운다.
     "usage": {"artwork_id", "input_audio", "input_image", "input_text", "output_audio", "total"},
     "visit_end": {"reason", "duration_s", "counts"},
 }
-QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close")
+# reconnect는 서버와 Gemini 사이의 연결 교체다. 폰 쪽 연결은 phone_closed·replaced로 센다.
+QUALITY_ISSUES = ("interrupted", "reconnect", "resumed", "phone_idle_close",
+                  "phone_closed", "replaced")
 
 
 class FieldNotAllowed(ValueError):
@@ -56,6 +60,13 @@ def _check(kind: str, fields: dict) -> dict:
         raise FieldNotAllowed(f"{kind}에 없는 칸: {sorted(extra)} (설계: docs/FE1/관람기록_설계.md)")
     if kind == "quality" and fields.get("issue") not in QUALITY_ISSUES:
         raise FieldNotAllowed(f"quality.issue는 {QUALITY_ISSUES} 중 하나여야 한다: {fields.get('issue')!r}")
+    if kind == "question":
+        # 라벨·결과는 server/question_labels.py의 목록만 받는다. Live가 보낸 값은 그 파일의
+        # normalize_label·normalize_outcome을 지나므로, 여기서 걸리면 부르는 쪽 버그다.
+        if fields.get("label") not in LABELS:
+            raise FieldNotAllowed(f"question.label은 {LABELS} 중 하나여야 한다: {fields.get('label')!r}")
+        if fields.get("outcome") not in OUTCOMES:
+            raise FieldNotAllowed(f"question.outcome은 {OUTCOMES} 중 하나여야 한다: {fields.get('outcome')!r}")
     for name, value in fields.items():
         if isinstance(value, str) and len(value) > MAX_TEXT:
             raise FieldNotAllowed(
@@ -101,8 +112,12 @@ def _keep_days() -> int:
     return days if days > 0 else 30
 
 
-def _dir() -> Path:
+def log_dir() -> Path:
+    """기록 파일이 쌓이는 폴더. 집계(server/visit_stats.py)도 이 함수로 경로를 받는다."""
     return Path(_env("LIVE_VISIT_DIR") or (ROOT / "logs"))
+
+
+_dir = log_dir   # 이전 이름. 새 코드는 log_dir를 쓴다.
 
 
 def start_bucket(now: float) -> str:
@@ -211,7 +226,7 @@ def start(*, mode: str, model: str, voice: str, ui_lang: str = "en", clock=time.
     log_mode = _mode()
     if log_mode == "off":
         return NullLog()
-    folder = _dir()
+    folder = log_dir()
     try:
         folder.mkdir(parents=True, exist_ok=True)
         gone = purge_old(folder, _keep_days(), clock())
@@ -233,7 +248,7 @@ if __name__ == "__main__":
         os.environ.update(LIVE_VISIT_LOG="team", LIVE_VISIT_SOURCE_KIND="mock", LIVE_VISIT_DIR=tmp)
         log = start(mode="handsfree", model="gemini-3.8-live", voice="Kore")
         log.event("artwork_identified", artwork_id="KHD_SSIREUM", via="function")
-        log.event("question", artwork_id="KHD_SSIREUM", channel="voice", label="", outcome="",
+        log.event("question", artwork_id="KHD_SSIREUM", channel="voice", label="fact", outcome="answered",
                   first_audio_ms=1659)
         log.event("comparison", artwork_id="KHD_SSIREUM", comparison_id="C_KHD_BRUEGEL", via="function")
         log.event("usage", input_audio=1200, input_image=800, input_text=40, output_audio=950, total=2990)

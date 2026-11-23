@@ -30,9 +30,12 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 from google.genai.errors import APIError
 
+import tests.sandbox  # noqa: F401  실제 기록 폴더에 쓰지 않게 막는다
+
 import server.live as relay
 import server.session as sessions
 from server import live_config as settings
+from server import question_labels
 from server.app import app as server_app
 from server.live_conversation import ranked_comparison_ids
 from server.live_transcript import clean_said, comparison_in_transcript
@@ -347,7 +350,12 @@ aad = cfg.realtime_input_config.automatic_activity_detection
 check("작품 없이도 연결된다(ready)", got[0].get("type") == "ready" and got[0].get("mode") == "handsfree", str(got[0]))
 check("자동 음성 감지를 켠다", aad is not None and aad.disabled is False, str(aad))
 names = [f.name for t in cfg.tools for f in t.function_declarations]
-check("함수 두 개를 선언한다", names == ["report_current_artwork", "report_comparison"], str(names))
+check("함수 세 개를 선언한다",
+      names == ["report_current_artwork", "report_comparison", "lookup_facts"], str(names))
+q_props = cfg.tools[0].function_declarations[2].parameters.properties
+check("조회 함수는 라벨 9개와 결과 3개만 받는다(unknown은 모델이 고르는 값이 아니다)",
+      list(q_props["label"].enum) == list(question_labels.MODEL_LABELS)
+      and list(q_props["outcome"].enum) == list(question_labels.MODEL_OUTCOMES), str(list(q_props)))
 enum = cfg.tools[0].function_declarations[0].parameters.properties["artwork_id"].enum
 check("작품 함수 값은 11개 ID + unknown", len(enum) == 12 and "unknown" in enum and ARTWORK in enum, str(enum))
 check("압축·재개 설정을 그대로 쓴다(영상이 섞이면 압축 없이 2분)",
@@ -407,7 +415,8 @@ check("함수마다 결과를 돌려준다(id·이름 일치)",
                                               ("call-0", "report_comparison"), ("call-0", "report_comparison")],
       str([(r.id, r.name) for r in responses]))
 art_result = responses[0].response
-check("작품 결과에 확인된 사실이 들어간다", "FACTS (the only facts you may use)" in art_result["artwork"])
+check("작품 결과에는 사실이 없다(조회는 lookup_facts로만 나간다)",
+      "FACTS (the only facts you may use)" not in art_result["artwork"], art_result["artwork"][:60])
 check("작품 결과에 비교 후보와 그 ID가 들어간다",
       "COMPARISON OPTIONS" in art_result["comparison_options"]
       # ID를 여기 적어 두지 않는다. 예원님이 비교쌍을 늘리면 이 시험만 깨지고, 깨진 사람은
@@ -816,7 +825,7 @@ saved_config = (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY,
     "gemini-3.8-live", "Kore", "every", "LOW", 700, 300, 30.0)
 check("켤 때 찍는 한 줄에 지금 값이 다 들어간다",
       settings.env_summary_line() == "[live] model=gemini-3.8-live voice=Kore frame_policy=every "
-      "start=LOW silence=700ms prefix=300ms idle=30s", settings.env_summary_line())
+      "start=LOW silence=700ms prefix=300ms idle=30s facts=per_question", settings.env_summary_line())
 (settings.LIVE_MODEL, settings.LIVE_VOICE, settings.FRAME_POLICY, settings.LIVE_START_SENSITIVITY,
  settings.LIVE_SILENCE_MS, settings.LIVE_PREFIX_MS, settings.PHONE_IDLE_S) = saved_config
 
@@ -874,6 +883,8 @@ def visit_log_run(**envs):
             [msg(calls=[("report_current_artwork", {"artwork_id": ARTWORK})])],
             [msg(calls=[("report_current_artwork", {"artwork_id": "unknown"})])],
             [msg(calls=[("report_comparison", {"comparison_id": "C_KHD_BRUEGEL"})])],
+            # 대문자·공백이 섞인 값을 보내 정규화까지 함께 본다
+            [msg(calls=[("lookup_facts", {"label": " Artist ", "outcome": "answered"})])],
             [msg(heard="Who painted this and when?"), msg(audio=b"\x01"),
              msg(said="Kim Hong-do painted it in the late eighteenth century."),
              msg(usage=FakeUsage(2522)), msg(interrupted=True), msg(turn_complete=True)],
@@ -896,8 +907,10 @@ check("기본값은 꺼짐이다 — 파일을 만들지 않는다",
 rows, raw, _ = visit_log_run(LIVE_VISIT_LOG="team", LIVE_VISIT_SOURCE_KIND="team_rehearsal",
                              LIVE_VISIT_SEASON="2026-가을", LIVE_VISIT_GALLERY="서화실")
 kinds = [r["event"] for r in rows]
-check("관람 하나가 visit_start로 시작해 visit_end로 끝난다",
-      kinds[:1] == ["visit_start"] and kinds[-1:] == ["visit_end"], str(kinds))
+# 폰 연결이 끊긴 것은 관람이 끝난 것이 아니다. 기록은 열린 채로 다시 붙는 폰을 기다리고,
+# END VISIT이나 만료 때 visit_end로 닫힌다(tests/test_visit_identity.py).
+check("관람 기록은 visit_start로 시작하고 연결이 끊겨도 닫히지 않는다",
+      kinds[:1] == ["visit_start"] and "visit_end" not in kinds, str(kinds))
 check("작품 인식이 남는다", any(r["event"] == "artwork_identified" and r["artwork_id"] == ARTWORK
                             and r["via"] == "function" for r in rows), str(kinds))
 check("unknown은 작품으로 세지 않고 따로 센다",
@@ -910,8 +923,11 @@ check("끼어들기가 남는다", any(r["event"] == "quality" and r["issue"] ==
 question = next((r for r in rows if r["event"] == "question"), None)
 check("질문 한 번이 남는다", question is not None and question["artwork_id"] == ARTWORK
       and question["channel"] == "voice", str(question))
-check("라벨과 결과는 아직 빈 값이다(FE3·BE1 결정 전)",
-      question is not None and question["label"] == "" and question["outcome"] == "", str(question))
+check("Live가 보고한 라벨과 결과가 남는다(대문자·공백은 정규화된다)",
+      question is not None and question["label"] == "artist"
+      and question["outcome"] == "answered", str(question))
+check("사실을 조회한 턴은 grounded=True로 남는다",
+      question is not None and question.get("grounded") is True, str(question))
 check("첫 음성까지 걸린 시간을 잰다(못 재면 -1)",
       question is not None and isinstance(question["first_audio_ms"], int), str(question))
 check("시즌·전시실이 들어간다",
@@ -927,8 +943,8 @@ check("작품을 아는 턴의 usage에 작품 ID가 들어간다",
       len(usages) == 2 and usages[1].get("artwork_id") == ARTWORK, str(usages))
 check("작품을 모르는 인사 턴은 작품 ID가 빈 값이다",
       len(usages) == 2 and usages[0].get("artwork_id") == "", str(usages))
-check("관람이 왜 끝났는지 남는다", rows[-1]["reason"] in ("phone_closed", "replaced", "phone_idle"),
-      str(rows[-1]))
+check("폰 연결이 왜 닫혔는지 남는다",
+      rows[-1]["event"] == "quality" and rows[-1]["issue"] == "phone_closed", str(rows[-1]))
 
 for forbidden in ("Who painted this", "Kim Hong-do", "eighteenth century", "France", "adult"):
     check(f"기록 파일에 {forbidden!r}가 없다", forbidden not in raw)

@@ -5,6 +5,7 @@ from google.genai import types
 
 from .live_context import build_live_instruction, profile_block
 from .prompts import LIVE_INSTRUCTION
+from .question_labels import MODEL_LABEL_GUIDE, MODEL_LABELS, MODEL_OUTCOME_GUIDE, MODEL_OUTCOMES
 
 UNKNOWN = "unknown"
 
@@ -53,6 +54,11 @@ LIVE_PREFIX_MS = _env_int("LIVE_PREFIX_MS", 300)
 # - on_speech는 연결 직후 첫 프레임과 음성·텍스트 질문 시작 시 최신 프레임을 전송한다.
 FRAME_POLICY = _env_choice("LIVE_FRAME_POLICY", "every", ("every", "on_speech"))
 
+# 작품 사실을 주는 시점
+# - per_question은 질문마다 lookup_facts로 조회한다. 조회 유무가 "질문 여부"의 기준이 된다.
+# - per_artwork는 작품이 바뀔 때 한 번에 준다(조회 왕복이 없어 질문당 약 1초 빠르다).
+LIVE_FACTS = _env_choice("LIVE_FACTS", "per_question", ("per_question", "per_artwork"))
+
 # Safari가 다시 로드할 때도 소켓 종료가 누락될 수 있어 handsfree 무응답 연결을 닫는다.
 PHONE_IDLE_S = _env_float("LIVE_PHONE_IDLE_S", 30)
 
@@ -61,7 +67,7 @@ def env_summary_line():
     """API 키를 제외한 Live 설정을 시작 로그에 표시한다."""
     return (f"[live] model={LIVE_MODEL} voice={LIVE_VOICE} frame_policy={FRAME_POLICY} "
             f"start={LIVE_START_SENSITIVITY} silence={LIVE_SILENCE_MS}ms "
-            f"prefix={LIVE_PREFIX_MS}ms idle={PHONE_IDLE_S:g}s")
+            f"prefix={LIVE_PREFIX_MS}ms idle={PHONE_IDLE_S:g}s facts={LIVE_FACTS}")
 
 
 _config_line_printed = False
@@ -111,6 +117,23 @@ def live_config(art, profile, used_ids, comparisons):
     )
 
 
+def _question_declaration():
+    """질문마다 부르는 도구. per_question이면 사실 조회 창구, per_artwork이면 기록 보고다."""
+    lookup = LIVE_FACTS == "per_question"
+    return types.FunctionDeclaration(
+        name="lookup_facts" if lookup else "report_question",
+        description=(
+            "Call once per visitor question, before you answer. Report how you classified the question "
+            + ("and get the verified facts for the current artwork; answer only from the result."
+               if lookup else "and whether you can answer it from the verified facts.")),
+        parameters=types.Schema(type=types.Type.OBJECT, required=["label"], properties={
+            "label": types.Schema(type=types.Type.STRING, enum=list(MODEL_LABELS),
+                                  description=MODEL_LABEL_GUIDE),
+            "outcome": types.Schema(type=types.Type.STRING, enum=list(MODEL_OUTCOMES),
+                                    description=MODEL_OUTCOME_GUIDE),
+        }))
+
+
 def handsfree_tools(artworks, verified_comparisons):
     """작품·비교 보고 도구를 선언하고 ID를 카탈로그의 값으로 제한한다."""
     return [types.Tool(function_declarations=[
@@ -132,6 +155,7 @@ def handsfree_tools(artworks, verified_comparisons):
                     type=types.Type.STRING, enum=sorted(verified_comparisons),
                     description="A comparison_id from the current artwork's comparison options."),
             })),
+        _question_declaration(),
     ])]
 
 
@@ -152,13 +176,27 @@ def handsfree_instruction(profile, artworks):
         "they enjoy. Do not describe a painting before you have looked at the camera.\n"
         "- Before you talk about a painting, look at the latest camera image and call "
         "report_current_artwork with its id. Call it again whenever the painting in view changes. "
-        "The function result contains the ARTWORK facts and COMPARISON OPTIONS; answer only from "
-        "that result. The EXHIBITION list gives titles only, not facts.\n"
+        + ("The function result names the artwork and gives COMPARISON OPTIONS. Facts come from "
+           "lookup_facts, not from this result. "
+           if LIVE_FACTS == "per_question" else
+           "The function result contains the ARTWORK facts and COMPARISON OPTIONS; answer only from "
+           "that result. ")
+        + "The EXHIBITION list gives titles only, not facts.\n"
         '- If you are not sure which painting is in view, call report_current_artwork with "unknown" '
         "and kindly ask the visitor to point the camera at the painting. Never guess between two works.\n"
         "- Before you start a comparison with a foreign painting, call report_comparison with its "
         "comparison_id from the latest COMPARISON OPTIONS. Do not compare with anything else.\n"
-        "- Never read ids or function names aloud.\n"
+        + ("- Whenever the visitor asks you something about the artwork, call lookup_facts before you "
+           "answer: once per question, with the label that fits it. Answer only from its result. If it "
+           "does not hold the answer, say you do not have it. The facts are valid for that one question "
+           "only: for every later question about the artwork, call lookup_facts again, even if you "
+           "think you remember the answer. Greetings and small talk need no call.\n"
+           if LIVE_FACTS == "per_question" else
+           "- Whenever the visitor asks you something, call report_question before you answer: once per "
+           "question, with the label that fits what they asked for and the outcome you are about to give. "
+           "This is for the museum's own records and never changes what you say.\n")
+        +
+        "- Never read ids, labels, or function names aloud.\n"
         "- When the visitor only makes a short backchannel or filler (for example \"mm-hmm\", \"yeah, I see\", "
         "\"uh-huh\"), talks to themselves, or talks with someone else, do not respond at all: produce no "
         "words. Never announce, explain, or describe that you are staying silent. "

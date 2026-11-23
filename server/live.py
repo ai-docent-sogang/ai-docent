@@ -26,6 +26,7 @@ from .ask import build_artwork_context
 from .content import load_artworks, load_comparisons
 from .gemini_client import make_client
 from . import live_config as settings
+from . import on_view
 from . import visit_log
 from .live_conversation import LiveConversation
 from .live_transcript import feed_said, flush_said
@@ -61,16 +62,28 @@ CLEANUP_INTERVAL_S = 60
 resume_store = {}
 # 연결 정보: session_id → {close, state, reconnects}. 같은 관람에는 연결 하나만 유지한다.
 active_connections = {}
+# 관람 기록: session_id → VisitLog. 폰이 끊겼다 다시 붙어도 같은 기록을 이어 쓴다. 재개 정보와
+# 수명이 같아서 관람이 끝날 때(END VISIT)와 만료될 때만 finish_visit_log로 닫고 지운다.
+visit_logs = {}
+
+
+def finish_visit_log(session_id, reason):
+    """관람이 정말 끝났다. 기록을 닫고 지운다. 폰 연결만 끊긴 때는 부르지 않는다."""
+    log = visit_logs.pop(session_id, None)
+    if log:
+        log.end(reason=reason)
 
 
 def cleanup_expired():
     """기억과 재개 핸들을 함께 청소한다. 접속 중인 관람은 삭제하지 않는다."""
     for sid in sessions.expire_idle_sessions(HANDLE_TTL_S, active_connections):
         resume_store.pop(sid, None)
+        finish_visit_log(sid, "expired")
     now = time.time()
     for sid, entry in list(resume_store.items()):
         if sid not in active_connections and now - entry["updated"] > HANDLE_TTL_S:
             resume_store.pop(sid, None)
+            finish_visit_log(sid, "expired")
 
 
 async def clean_idle_sessions():
@@ -83,6 +96,7 @@ def end_visit(session_id):
     """명시적으로 끝낸 관람은 즉시 폐기하고, 아직 남은 연결도 닫는다."""
     sessions.end_session(session_id)
     resume_store.pop(session_id, None)
+    finish_visit_log(session_id, "visit_ended")
     connection = active_connections.get(session_id)
     if connection:
         connection["close"]()
@@ -134,40 +148,46 @@ async def live(ws: WebSocket):
     # profile과 session_id는 없어도 된다(시험 페이지는 artwork_id만 보낸다).
     first = json.loads(await ws.receive_text())
     mode = "handsfree" if first.get("mode") == "handsfree" else "push"
-    art = artworks.get(first.get("artwork_id"))
+    # 운영 페이지에서 끈 작품을 여기서 한 번 뺀다. 연결마다 다시 거르므로 모듈 수준 목록이
+    # app.py가 주입한 것이든 이 파일이 스스로 읽은 것이든 필터가 새지 않는다.
+    visible = on_view.visible(artworks)
+    art = visible.get(first.get("artwork_id"))
     if art is None and mode == "push":
         await ws.send_text(json.dumps({"type": "error", "message": "unknown artwork"}))
         await ws.close()
         return
     profile = first.get("profile") or {}
 
-    # 관람 기록은 기본 비활성. 허용 필드는 visit_log.ALLOWED에서 관리한다.
-    vlog = visit_log.start(mode=mode, model=settings.LIVE_MODEL, voice=settings.LIVE_VOICE,
-                           ui_lang=str(profile.get("language") or "en")[:16])
-
     # 관람 기억. 폰이 /api/session에서 받은 session_id를 보내면 그 관람에 이어 쓴다. 없거나
     # 서버를 다시 켜서 사라졌으면 새로 만들고 ready에 담아 돌려준다(폰이 요약 화면에 쓴다).
     visit = sessions.get_session(first.get("session_id") or "") or sessions.create_session()
     sid = visit.session_id
 
+    # 관람 기록은 관람 하나에 하나다. 기록은 기본 비활성이고 허용 필드는 visit_log.ALLOWED에 있다.
+    vlog = visit_logs.get(sid)
+    if vlog is None:
+        vlog = visit_logs[sid] = visit_log.start(
+            mode=mode, model=settings.LIVE_MODEL, voice=settings.LIVE_VOICE,
+            ui_lang=str(profile.get("language") or "en")[:16])
+
     # 다시 붙는 폰이면 저장해 둔 재개 핸들과 작품을 이어받는다.
     want_resume = first.get("resume") is True
     saved = saved_resume(sid) if want_resume else None
-    if mode == "handsfree" and art is None and saved and saved.get("artwork_id") in artworks:
+    if mode == "handsfree" and art is None and saved and saved.get("artwork_id") in visible:
         art_from_resume = saved["artwork_id"]
     else:
         art_from_resume = ""
 
     conversation = LiveConversation(
         mode=mode, artwork_id=art["artwork_id"] if art else art_from_resume,
-        profile=profile, visit=visit, artworks=artworks, comparisons=comparisons,
+        profile=profile, visit=visit, artworks=visible, comparisons=comparisons,
         resume_store=resume_store, vlog=vlog, saved=saved)
     state = conversation.state
     to_browser = conversation.to_browser
     if mode == "push":
         config = settings.live_config(art, profile, tuple(visit.used_comparison_ids), comparisons)
     else:
-        config = settings.handsfree_config(profile, artworks, conversation.verified_comparisons)
+        config = settings.handsfree_config(profile, visible, conversation.verified_comparisons)
     client = make_client()
 
     # 설정과 클라이언트 생성에 성공한 뒤 등록한다. 같은 관람의 이전 연결은 닫는다.
@@ -508,16 +528,13 @@ receive()는 한 턴마다 끝나므로 연결이 유지되는 동안 반복해�
             resume_store.pop(sid, None)
         if active_connections.get(sid) is connection:
             del active_connections[sid]
-        # 관람 기록에는 세션 ID 없이 종료 사유만 남긴다.
+        # 연결이 끊기는 것은 관람이 끝나는 것이 아니다. 관람이 사라졌을 때만 기록을 닫고,
+        # 그 밖에는 연결이 왜 닫혔는지만 남긴다(phone_idle은 감시 작업이 이미 남겼다).
+        # 기록에는 세션 ID 없이 사유만 넣는다.
         if ended:
-            reason = "visit_ended"
-        elif phone_idle:
-            reason = "phone_idle"
-        elif kicked.is_set():
-            reason = "replaced"
-        else:
-            reason = "phone_closed"
-        vlog.end(reason=reason)
+            finish_visit_log(sid, "visit_ended")
+        elif not phone_idle:
+            vlog.event("quality", issue="replaced" if kicked.is_set() else "phone_closed")
     print(f"[live] 폰 연결 끝({sid[:8]}, {mode}). 저장된 핸들 "
           f"{'있음' if (resume_store.get(sid) or {}).get('handle') else '없음'}")
     if phone_idle:
