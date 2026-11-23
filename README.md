@@ -18,7 +18,7 @@
 대화 방식이 둘이라 코드를 방식별로 나눠 두었습니다.
 
 - **`live/`**: Live 실시간 음성(WebSocket `/ws/live`). 본선입니다.
-- **`pre_live/`**: Live 이전의 요청·응답 방식(`POST /api/turn`, `POST /api/ask`, 브라우저 STT·TTS). Live가 끊길 때의 대체 경로이기도 합니다.
+- **`pre_live/`**: Live 이전의 요청·응답 방식(`POST /api/turn`, 브라우저 STT·TTS). Live가 끊길 때의 대체 경로이기도 합니다.
 - **`archive/`**: 끝난 실험(음성·방식 비교)과 날짜가 지난 문서입니다. 지금 운영·분석에는 쓰지 않으므로 평소에는 열지 않아도 됩니다. 무엇을 왜 옮겼는지는 [`archive/README.md`](archive/README.md)에 있습니다.
 - 두 폴더 밖에 있는 파일은 두 방식이 함께 쓰거나(`content.py`, `session.py`, `gemini_client.py`의 `make_client`), 대화 방식과 상관없는 것(인식, 관람 기록, 운영 화면)입니다.
 
@@ -43,7 +43,6 @@ ai-docent/  (저장소 최상위)
 │   │   ├── live_conversation.py  한 관람의 대화 상태, 함수 호출 응답 (FE1)
 │   │   └── live_transcript.py    받아쓰기 정리, 답 속 비교작 찾기 (FE1)
 │   ├── pre_live/         [Live 이전] 요청·응답 방식
-│   │   ├── ask.py             텍스트 질문·답변 /api/ask (BE1)
 │   │   ├── turn.py            한 턴 대화 /api/turn (BE1)
 │   │   └── docent_reply.py    /api/turn의 Gemini 호출과 답의 모양 (BE1)
 │   ├── prompts.py        도슨트 지시문과 첫 인사. 방식별 지시문이 한 파일에 구역으로 나뉨 (BE1, 말투는 FE3 제안)
@@ -81,7 +80,7 @@ ai-docent/  (저장소 최상위)
 │                         관람 분석 측정 (FE1)
 ├── tests/       시험 (FE1). 실행 방법은 각 파일 맨 위 주석
 │   ├── live/             [Live] 세션 수명, 질문 턴, 관람 식별, 화면 대화·마이크·재생
-│   ├── pre_live/         [Live 이전] test_ask.mjs(/api/ask 요청), test_stt.mjs(음성 인식 처리)
+│   ├── pre_live/         [Live 이전] test_stt.mjs(음성 인식 처리)
 │   └── sandbox.py, test_admin_*, test_on_view.py, test_visit_log.py, test_visit_stats.py
 │                         공통·운영·기록 시험
 ├── archive/     끝난 실험과 지난 문서. 지금 운영·분석에는 쓰지 않는다. 원래 경로를 그대로 따라 둠 (archive/README.md)
@@ -93,7 +92,7 @@ ai-docent/  (저장소 최상위)
 | 옛 경로 | 새 경로 |
 | --- | --- |
 | `server/live*.py` | `server/live/live*.py` |
-| `server/ask.py` | `server/pre_live/ask.py` |
+| `server/ask.py` (`POST /api/ask`, 11/23 폐기) | `archive/server/pre_live/ask.py` |
 | `server/app.py`의 `/api/turn` | `server/pre_live/turn.py` |
 | `server/gemini_client.py`의 `DocentReply`, `ask_docent` | `server/pre_live/docent_reply.py` |
 | `server/ask.py`의 `build_artwork_context` | `server/content.py` |
@@ -101,7 +100,8 @@ ai-docent/  (저장소 최상위)
 | `static/audio.js`, `static/stt.js` | `static/pre_live/` |
 | `tools/live_relay_spike.py` 등 Live 도구 4개 | `tools/live/` |
 | `tests/test_live_*`, `test_question_turn`, `test_visit_identity` | `tests/live/` |
-| `tests/test_ask.mjs`, `tests/test_stt.mjs` | `tests/pre_live/` |
+| `tests/test_ask.mjs` | `archive/tests/pre_live/test_ask.mjs` (`/api/ask` 폐기) |
+| `tests/test_stt.mjs` | `tests/pre_live/` |
 | `experiments/voice/`, `tools/compare_modes.py`, `tools/live/probe_live_audio.py` | `archive/` 아래 같은 경로 (11/23 두 번째 정리) |
 | `data/eval/mode_comparison*.csv`, `data/eval/voice_*.json` | `archive/data/eval/` |
 | `docs/meeting/`의 11/11 회의록·11/12 안내·11/16 요청, `docs/FE1/FE1_음성_실험_2026-11-11.md` | `archive/docs/` 아래 같은 경로 |
@@ -165,7 +165,6 @@ PYTHONPATH=. uv run uvicorn --app-dir tools/live live_relay_spike:app --port 801
 ## 시험
 
 ```bash
-node tests/pre_live/test_ask.mjs
 node tests/pre_live/test_stt.mjs
 node tests/live/test_live_mic.mjs
 node tests/live/test_live_player.mjs

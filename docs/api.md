@@ -3,8 +3,22 @@
 폰 웹앱(`static/api.js`)·글라스 앱과 서버(`server/app.py`)가 주고받는 형식입니다. 이 문서가 기준이며, **바꿀 때는 이 문서를 먼저 고치고 BE1과 FE1이 함께 리뷰**합니다. 한쪽만 바꾸면 다른 쪽이 고장 납니다.
 
 - 담당: BE1(서버), FE1(웹앱). 글라스 앱(FE2)도 이 형식을 따릅니다.
-- 기준일: 2026-11-03 (v0 코드 기준)
+- 기준일: 2026-11-23. `/ws/live`와 운영 API는 11/23 코드 기준이고, 나머지 `/api/*` 절은 11/03 v0 기준에 11/23 수정을 더했습니다
 - 정상 응답은 JSON입니다. 서버가 미리 정한 오류는 HTTP 상태 코드와 `{"detail": "설명"}`으로 오고, 예상하지 못한 오류(예: Gemini 호출 실패)는 500과 `Internal Server Error` 글자로 옵니다.
+
+## 지금 쓰는 API 한눈에 (2026-11-23)
+
+| 주소 | 누가 부르나 | 언제 쓰나 |
+| --- | --- | --- |
+| `WS /ws/live` | 폰 웹앱(`static/live/live_conversation.js`) | **본선.** 관람 중 음성·사진·글 대화 전부 |
+| `POST /api/session` | 폰 웹앱 | 관람을 시작할 때 `session_id`를 받는다 |
+| `POST /api/session/{session_id}/end` | 폰 웹앱 | 관람을 끝낼 때. 서버 기억을 지우고 남은 Live 연결을 닫는다 |
+| `POST /api/turn` | 폰 웹앱 | **안전망.** Live 연결이 실패하면 화면이 누르고 말하기로 돌아가 이 주소로 묻는다 |
+| `GET /`, `GET /static/*` | 관람객 폰 | 웹앱 화면과 스크립트 |
+| `GET /admin`, `GET /api/admin/*`, `POST /api/admin/artworks/{id}/on_view` | 운영자 | 운영 페이지, 집계, 작품 켜기/끄기 |
+| `GET /live`, `GET /live/status` | 개발자 | Live 시험 페이지, 연결 상태 확인 |
+
+`POST /api/ask`는 11/23에 폐기했습니다. 화면이 부르지 않았고, 입력원이던 브라우저 STT도 쓰지 않기로 했습니다.
 
 ## POST `/api/session` — 관람 시작
 
@@ -50,38 +64,7 @@
 
 ## POST `/api/session/{session_id}/end` — 관람 끝
 
-보내는 값: 없음. 받는 값: `{"ok": true}`. 그 세션의 기억을 서버에서 지웁니다. 지금 웹앱은 아직 이 주소를 부르지 않습니다.
-
-## POST `/api/ask` — 텍스트 질문·답변 (BE1, 11/11 추가)
-
-FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내는 주소입니다. 세션 없이 작품 한 점 기준으로 답합니다. 코드: `server/pre_live/ask.py`.
-
-보내는 값: JSON (`Content-Type: application/json`)
-
-| 필드 | 필수 | 형식 | 설명 |
-| --- | --- | --- | --- |
-| `artwork_id` | 예 | 문자열 | `data/artworks.csv`의 작품 ID (예: `KHD_SSIREUM`) |
-| `question` | 예 | 문자열 | 관람객의 질문(영어) |
-
-예: `{"artwork_id": "KHD_SSIREUM", "question": "Who painted this?"}`
-
-받는 값:
-
-| 필드 | 형식 | 설명 |
-| --- | --- | --- |
-| `answer` | 문자열 | 화면에 표시하고 읽어 줄 답변. **status와 상관없이 항상 들어 있음** |
-| `artwork_id` | 문자열 | 보낸 작품 ID 그대로 |
-| `artwork_title` | 문자열 | 작품 영문 제목. 모르는 작품이면 `""` |
-| `status` | 문자열 | `ok` 정상 / `mock` 임시 답변 / `no_artwork` 자료 없는 작품 / `error` 답변 생성 실패 |
-| `source_url` | 문자열 | 근거 자료 출처(e뮤지엄 페이지). 없으면 `""` |
-| `latency_ms` | 숫자 | 서버 안에서 답변을 만드는 데 걸린 시간(밀리초) |
-| `model` | 문자열 | 실제로 답한 Gemini 모델. 임시 답변·실패면 `""` |
-
-모델 예비 순서: `GEMINI_MODEL`이 과부하(503)·사용 불가·12초 초과면 `ASK_FALLBACK_MODELS`(기본 `gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite`) 순서로 다음 모델을 씁니다.
-
-오류: 400 `question`이 비었음. 자료 없는 작품과 Gemini 실패는 오류 코드 대신 `status`와 안내 문장(`answer`)으로 돌려줍니다.
-
-임시 답변 모드: `.env`에 `ASK_MOCK=1`을 넣고 서버를 다시 켜면 Gemini 없이 `status: "mock"` 답변을 돌려줍니다.
+보내는 값: 없음. 받는 값: `{"ok": true}`. 그 세션의 기억을 서버에서 지우고, 그 관람에 남은 Live 연결과 재개 정보도 지웁니다. 웹앱은 END VISIT에서 이 주소를 부릅니다.
 
 ## 운영 API (FE1, 11/19 추가) — 관람객 화면이 아닙니다
 
@@ -133,7 +116,7 @@ FE1이 브라우저 음성 인식으로 받아쓴 질문을 텍스트로 보내�
 
 | 바꾸는 것 | 함께 고칠 파일 |
 | --- | --- |
-| 보내는 필드 | `server/app.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
-| 받는 필드 | `server/pre_live/turn.py`의 응답, `server/pre_live/docent_reply.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
+| `/api/turn`에 보내는 필드 | `server/pre_live/turn.py`의 `turn()`, `static/api.js`의 `postTurn()`, 글라스 앱 |
+| `/api/turn`에서 받는 필드 | `server/pre_live/turn.py`의 응답, `server/pre_live/docent_reply.py`의 `DocentReply`, `static/app.js`의 `sendTurn()` |
 | 운영 API의 집계 칸 | `server/visit_stats.py`, `server/admin.py`, `static/admin.js`, 이 문서 |
-| 실시간 음성(Gemini Live API)으로 전환 | 이 문서 전체를 새로 씁니다(역할 가이드 3장의 방식 비교 실험 결과에 따라 결정) |
+| `/ws/live`의 메시지·설정 | `server/live/live.py`(주고받기), `server/live/live_conversation.py`(`artwork`·`comparison` 메시지), `server/live/live_config.py`(환경 변수), `static/live/live_conversation.js`(폰), `tests/live/test_live_session_lifetime.py`, 이 문서 |

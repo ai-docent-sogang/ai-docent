@@ -1,7 +1,7 @@
 """AI 도슨트 HTTP·WebSocket 서버. 담당: BE1.
 
 세션과 요청을 연결하고 콘텐츠 조회·Gemini 호출은 담당 모듈에 위임한다.
-Live 라우터는 live/live.py, 요청·응답 라우터(ask·turn)는 pre_live/에 정의한다.
+Live 라우터는 live/live.py, 요청·응답 라우터(turn)는 pre_live/에 정의한다.
 API 계약: docs/api.md. 음성·프레임은 처리 중에만 메모리에 둔다.
 실행: uv run uvicorn server.app:app --host 0.0.0.0 --port 8000
 """
@@ -17,7 +17,6 @@ from . import session as sessions
 from .content import load_artworks, load_comparisons
 from .gemini_client import make_client
 from .live import live as live_api
-from .pre_live import ask as ask_api
 from .pre_live import turn as turn_api
 from .prompts import GREETING
 
@@ -40,12 +39,8 @@ def gemini():
     return _client
 
 
-# Live 이전의 요청·응답 방식(server/pre_live/): 텍스트 질문(POST /api/ask)과 한 턴 대화(POST /api/turn).
+# Live 이전의 요청·응답 방식(server/pre_live/): 한 턴 대화(POST /api/turn). Live 연결이 실패하면 화면이 이 주소로 돌아온다.
 # 작품 CSV와 Gemini 연결은 이 파일의 것을 함께 쓴다.
-ask_api.artworks = artworks
-ask_api.get_client = gemini
-app.include_router(ask_api.router)
-
 turn_api.artworks = artworks
 turn_api.comparisons = comparisons
 turn_api.get_client = gemini

@@ -57,7 +57,7 @@ def rank_comparisons(comparisons, artwork_id, profile, used_ids):
 
 
 def build_artwork_context(art):
-    """요청·응답 방식(`/api/ask`)과 Live가 함께 쓰는 작품 근거 글을 구성한다.
+    """Live와 `/api/turn` 이후 경로가 함께 쓰는 작품 근거 글을 구성한다.
 
     보물·국보와 화폭·인물 의상의 혼동을 줄이도록 지정 등급과 화폭 재질을 명시한다
     (11/11 방식 비교 Q03·Q07).
