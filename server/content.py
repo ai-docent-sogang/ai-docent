@@ -33,6 +33,11 @@ def load_comparisons(path=DATA_DIR / "comparisons.csv"):
     return rows
 
 
+def verified_comparisons(comparisons):
+    """검증을 마친(verification_status=verified) 비교쌍만 남긴다. Live와 /api/turn이 같은 기준을 쓴다."""
+    return [c for c in comparisons if c.get("verification_status", "").strip().lower() == "verified"]
+
+
 def profile_terms(profile):
     """국가·익숙한 미술 이름을 소문자로 정규화해 전체 이름과 구성 단어를 수집한다."""
     terms = set()
@@ -54,3 +59,19 @@ def rank_comparisons(comparisons, artwork_id, profile, used_ids):
         return (c["comparison_id"] in used_ids, -matches)
 
     return sorted(candidates, key=key)
+
+
+def build_artwork_context(art):
+    """Live와 `/api/turn` 이후 경로가 함께 쓰는 작품 근거 글을 구성한다.
+
+    보물·국보와 화폭·인물 의상의 혼동을 줄이도록 지정 등급과 화폭 재질을 명시한다
+    (11/11 방식 비교 Q03·Q07).
+    """
+    facts = "\n".join(f"- {fact}" for fact in art["key_facts"])
+    designation = art.get("designation") or "none recorded"
+    return (
+        f"ARTWORK: {art['title_en']}\n"
+        f"Artist: {art['artist']}\nDate: {art['date']}\n"
+        f"Painting surface: {art['medium']}\nDesignation: {designation}\n"
+        f"FACTS (the only facts you may use):\n{facts}"
+    )

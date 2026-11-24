@@ -1,9 +1,9 @@
 // AIVY mobile UI. UI integration by FE2; retain FE1's v0 session, camera, audio and /api/turn contract.
-// IMPORTANT: region/age selection currently lives in this browser session only. BE1 must add a
-// documented profile API before personalization can influence Gemini responses.
+// Region/age selection is sent to the server as the profile in the first /ws/live message
+// (see startLive). The /api/turn fallback does not send it.
 import { postTurn, startSession } from "./api.js";
-import { initAudio, speak, stopSpeaking, toWav16k } from "./audio.js";
-import { continueSavedVisit, createLiveConversation, createVisitStore, createWakeLock, FRAME_MAX_WIDTH } from "./live_conversation.js"; // FE1 Live 연결 (11/18)
+import { initAudio, speak, stopSpeaking, toWav16k } from "./pre_live/audio.js";
+import { continueSavedVisit, createLiveConversation, createVisitStore, createWakeLock, FRAME_MAX_WIDTH } from "./live/live_conversation.js"; // FE1 Live 연결 (11/18)
 
 const $ = (id) => document.getElementById(id);
 const video = $("camera");
@@ -29,7 +29,7 @@ const viewedArtworks = new Map(); // artwork_id => {title,artist,comparisons:Set
 const MIN_WAV_BYTES = 8000;   // 사진 가로 크기는 live_conversation.js의 FRAME_MAX_WIDTH 하나를 쓴다
 
 // ── FE1 Live 연결 (11/18) ─────────────────────────────────────────────────────────────
-// 버튼 없는 대화(Live handsfree, static/live_conversation.js). START EXPLORING 뒤에 연다.
+// 버튼 없는 대화(Live handsfree, static/live/live_conversation.js). START EXPLORING 뒤에 연다.
 // Live가 열리면 마이크 버튼은 상태 표시·음소거 토글이 되고, 글 질문도 Live로 간다.
 // 처음 연결에 실패하면 live=null로 두고 /api/turn 탭 녹음으로 전환한다. 도중 끊김·error는
 // live_conversation.js가 END VISIT 전까지 스스로 다시 붙는다(버튼 방식으로 바꾸지 않는다. 글라스를 쓰면 누를 화면이 없다).
@@ -224,6 +224,14 @@ function rememberReply(text) {
   $("replay").disabled = !lastReply;
   if (lastReply) readReply(lastReply);
 }
+function startErrorText(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError")
+    return "Camera or microphone access was blocked. Allow both in your browser settings, then try again.";
+  if (error?.name === "NotFoundError" || error?.name === "OverconstrainedError")
+    return "No camera or microphone was found on this device.";
+  if (error?.message === MIC_BLOCKED) return MIC_BLOCKED[0].toUpperCase() + MIC_BLOCKED.slice(1);
+  return "We could not start your visit. Check your connection and try again.";
+}
 function addMessage(who,text) {
   if (!text) return;
   const div = document.createElement("div");
@@ -231,6 +239,7 @@ function addMessage(who,text) {
   div.textContent = text;
   $("log").appendChild(div);
   $("log").scrollTop = $("log").scrollHeight;
+  return div;
 }
 function getSelectedRegion() {
   return $("region-select").options[$("region-select").selectedIndex]?.text || "North America";
@@ -356,7 +365,7 @@ $("onboarding-form").addEventListener("submit",async event=>{
     pendingLive.close(); // FE1 Live 연결 (11/18)
     if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
     $("start").disabled=false;
-    alert("Could not start visit: "+error.message);
+    alert(startErrorText(error));
   }
 });
 
@@ -423,9 +432,10 @@ async function sendTurn({audio,text,frame}){
   $("replay").disabled=true;$("test-voice").disabled=true;talkBtn.disabled=true;
   setStatus("Thinking…");
   const started=performance.now();
+  const visitorBubble=addMessage("visitor",text||"(voice question)");
   try{
     const data=await postTurn({sessionId,audio,text,frame});
-    addMessage("visitor",data.transcript||text||"Voice question");
+    if(data.transcript)visitorBubble.textContent=data.transcript;
     addMessage("docent",data.reply);
     recordArtwork(data);
     rememberReply(data.reply);
@@ -436,7 +446,7 @@ async function sendTurn({audio,text,frame}){
       " · server profile: "+(profile.country||"unset")+" · total "+total+" ms";
     setStatus("Ask another question or review your artwork.");
   }catch(error){
-    setStatus("Request failed: "+error.message);
+    setStatus("The guide could not answer. Check your connection and ask again.");
   }finally{
     busy=false;$("replay").disabled=!lastReply;$("test-voice").disabled=false;
     talkBtn.disabled=false;
@@ -473,7 +483,7 @@ $("end-visit").addEventListener("click",async()=>{
     $("details-overlay").hidden=true;showScreen("welcome-screen");
   }catch(error){
     $("end-visit").disabled=false;
-    alert("Could not end the server session: "+error.message+". Please retry.");
+    alert("We could not end your visit on the server. Check your connection and tap End visit again.");
     return;
   }
   $("end-visit").disabled=false;

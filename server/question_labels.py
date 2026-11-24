@@ -5,7 +5,7 @@
 하나여야 하므로 라벨·결과와 그 설명문을 이 파일에만 둔다.
 
 다른 모듈을 가져오지 않는다. 기록 쪽(`server/visit_log.py`)과 Live 쪽
-(`server/live_config.py`), 집계 쪽(`server/visit_stats.py`)이 모두 이 파일을 가져온다.
+(`server/live/live_config.py`), 집계 쪽(`server/visit_stats.py`)이 모두 이 파일을 가져온다.
 """
 
 LABELS = ("fact", "artist", "meaning", "context", "technique", "comparison", "navigation", "request",

@@ -1,8 +1,10 @@
 # Live API 전환 검토 — 코드로 확인한 부분 (FE1, 2026-11-11)
 
-담당: FE1 김도혁. 측정 도구: [`tools/probe_live_audio.py`](../../tools/probe_live_audio.py),
-[`tools/live_relay_spike.py`](../../tools/live_relay_spike.py), [`tools/fake_browser_live.py`](../../tools/fake_browser_live.py).
-배경: BE1의 방식 비교 PR #7, FE1의 [응답 시간 측정](FE1_응답시간_측정.md).
+담당: FE1 김도혁. 측정 도구: [`archive/tools/live/probe_live_audio.py`](../../archive/tools/live/probe_live_audio.py),
+[`tools/live/live_relay_spike.py`](../../tools/live/live_relay_spike.py), [`tools/live/fake_browser_live.py`](../../tools/live/fake_browser_live.py).
+
+> 11/23 주: 이 문서가 말하는 `/api/ask`는 폐기했다. 시연 안전망은 `/api/turn`의 마이크 탭 녹음이 맡는다(Live 연결이 실패하면 화면이 그쪽으로 돌아온다).
+배경: BE1의 방식 비교 PR #7, FE1의 [응답 시간 측정](../../archive/docs/FE1/FE1_응답시간_측정.md).
 
 ## 왜 확인했나
 
@@ -78,7 +80,7 @@ Live로 가면 FE1 쪽은 줄지 않고 **바뀐다.** 브라우저 STT·TTS(`st
 ## 판단과 제안
 
 **측정값은 Live가 유리하다.** 실기기에서 1.5초 vs 8초, 사실 정확도도 Live가 높았다(BE1 채점 10/0/0).
-8초는 관람객이 기다리기 어려운 시간이고, [응답 시간 측정](FE1_응답시간_측정.md)에서 확인한 대로
+8초는 관람객이 기다리기 어려운 시간이고, [응답 시간 측정](../../archive/docs/FE1/FE1_응답시간_측정.md)에서 확인한 대로
 **보내는 양을 줄이는 방향으로는 줄일 수 없다.** 모델이 생각하는 시간이기 때문이다.
 
 다만 전환 비용이 작지 않고, 12/1 시연까지 남은 기간에 세션 수명 관리까지 새로 만드는 부담이 있다.

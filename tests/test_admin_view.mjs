@@ -52,6 +52,10 @@ assert.equal(admin.ratio(0, 7), "0/7 (0%)");
 assert.equal(admin.ratio(0, 0), "N/A", "분모가 0이면 비율을 만들지 않는다");
 assert.equal(admin.ratio(5, 0), "N/A");
 
+assert.equal(admin.percent(3, 5), 60);
+assert.equal(admin.percent(0, 7), 0);
+assert.equal(admin.percent(5, 0), null, "분모가 0이면 막대를 그리지 않는다");
+
 // 2. 초 표기
 assert.equal(admin.seconds(45), "45초");
 assert.equal(admin.seconds(90), "1분 30초");
